@@ -1,7 +1,5 @@
 *.log
 *.txt
-UML.bmp
-test.xml
 gitignore/*
 soundfont/*
 !soundfont/acoustic_grand_piano-ogg.js

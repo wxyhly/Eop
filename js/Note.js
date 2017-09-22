@@ -70,20 +70,21 @@ MIDI = {
 			if(!passed) MIDI.onsuccess();
 			passed = true;
 		}
-		var playSound = function(buf, volume) {
-			var context = MIDI.context;
-			var source = context.createBufferSource();
-			source.buffer = buf;
-			var gainNode = context.createGain();
-			source.connect(gainNode);
-			gainNode.connect(context.destination);
-			gainNode.gain.value = volume;
-			source.start(0);
-		}
-		/**@export**/
-		MIDI.noteOn = function(channel, note, volume) {
-			playSound(MIDI.audioBuffers[channel][note], volume/100);
-		}
+	},
+	noteOn : function(channel, note, volume) {
+		var buf = MIDI.audioBuffers[channel][note];
+		var context = MIDI.context;
+		buf.source = context.createBufferSource();
+		buf.source.buffer = buf;
+		var gainNode = context.createGain();
+		buf.source.connect(gainNode);
+		gainNode.connect(context.destination);
+		gainNode.gain.value = volume/20;
+		buf.source.start(0);
+	},
+	noteOff : function(channel, note) {
+		var buf = MIDI.audioBuffers[channel][note];
+		if(buf) buf.source.stop(0);
 	}
 }
 
@@ -97,13 +98,14 @@ MIDI = {
 PLAYER = {
 	volume : 1,
 	autoVolume : function (note){
-		var x1 = 20; var y1 = 80;
-		var x2 = 110; var y2 = 100;
+		var x1 = 20; var y1 = 100;
+		var x2 = 110; var y2 = 110;
 		if(note < x1) return y1;
 		if(note > x2) return y2;
 		return Math.round((y1 - y2)/(x1 - x2)*(note - x1)) + y1;
 	},
 	play : function (channel,note,volume,delay){
+		channel = channel || 0;
 		if(!volume > 0) volume = PLAYER.autoVolume(note);
 		if(!delay) delay = 0;
 		setTimeout(function (){MIDI.noteOn(channel, note, volume * PLAYER.volume, 0)},delay);
@@ -115,7 +117,7 @@ PLAYER = {
 		mode: string;
 		keysig, tempsig: int;
 		enable: bool;
-		strSharp, strFlat, presstr: string;
+		strSharp, strFlat, presstr, pressnote: string;
 		Eop, Ki: hashTable;
 		ki(note: int, nonrecord: bool);
 **/
@@ -123,9 +125,12 @@ PLAYER = {
 IN = {
 	mode: "eop",  //input mode, choix disponible: [eop, ki, si]
 	keysig: 0, tempsig: 0,
+	keepfirsttemp: false,
 	enable: true,
+	sustain: true,  //sustain
 	strSharp: "", strFlat: "",
 	presstr: "",  //store which keys are being pressed
+	pressnote: [], //store which notes are being pressed(use to record duration of note)
 	ki : function (note, time){//if grid on, record time is not now
 		var sig = IN.keysig + IN.tempsig;
 		var N = [1,0,2,0,3,4,0,5,0,6,0,7][note % 12];
@@ -154,7 +159,7 @@ IN = {
 		ctxt: NoteJSON[];
 		isRecord, isWait: bool;
 		offset: int;
-		record(channel, note: int, volume: number, time: int);
+		record(channel, note: int, volume: number, time: int): noteObj;
 		play();
 		stop();
 		sort();
@@ -170,8 +175,10 @@ recorder = {
 		var time = new Date().getTime();
 		if(recorder.isWait) recorder.offset = Math.round(time - view.p);
 		recorder.isWait = false;
-		recorder.ctxt.push({c: channel, n: note, v: volume, t: time - recorder.offset});
+		var noteObj = {c: channel, n: note, v: volume, t: time - recorder.offset};
+		recorder.ctxt.push(noteObj);
 		view.findP(time - recorder.offset);
+		return noteObj;
 	},
 	play: function (){
 		recorder.stop();
@@ -185,6 +192,12 @@ recorder = {
 					view.moveP(stor[i].t);
 				}.bind(undefined, i),
 				dt
+			);
+			if(stor[i].d) setTimeout(
+				function (i){
+					MIDI.noteOff(stor[i].c, stor[i].n);
+				}.bind(undefined, i),
+				dt+stor[i].d
 			);
 		}
 	},
@@ -214,34 +227,26 @@ recorder = {
 	},
 	toJSON: function(g,v,c){
 		recorder.sort();
-		var json = [];
-		var dtob = function (num, base){
-			var r = function (num, base) {
-				var str = "", digit = "ABCDEFGHIJKLMNOPQRSTUVWXYZab-defghijklmnopqrstu?wxyz0123456789+/=";
-				if(num==0){
-					return "";
-				}else {
-					str = r(Math.floor(num/base),base);
-					return str + digit.charAt(num%base);
-				}
-			}
-			if(num==0)return "A";
-			return r(num, base);
-		}
+		var json = "";
 		recorder.ctxt.forEach(function(e){
 			var T = Math.round(e.t);
 			if(g){
 				T = Math.round(T/grid.gap*12);// 12 is for detail gcd 2 3 4
 			}
+			var E;
+			if(T>=32){
+				E = T>>12 + 32; // 0000001 xxxxx | xxxxxxxxxx
+				json += WXYcode.dtob(e.n>>3) + WXYcode.dtob(T & 4095);
+			}
 			var E = String.fromCharCode(e.n) + dtob(T,64);
-			if(v&&e.v) E+="v"+e.v;
-			if(c&&e.c) E+="c"+e.c;
-			json.push(E);
+			//if(v&&e.v) E+="v"+e.v;
+			//if(c&&e.c) E+="c"+e.c;
+			//json.push(E);
 		});
 		
 		var header = "";
 		if(g){
-			header = grid.gap+"||";
+			header = Math.round(60/grid.gap*1000)+"|";
 		}
 		return header+JSON.stringify(json).replace(/\"\,\"/g,",");
 	},
@@ -318,16 +323,19 @@ view = {
 		select.drawRect(ctxt);
 		grid.draw(ctxt);
 		//Notes
+		ctxt.font="20px Arial";
 		for(var i = 0; i < storage.length; i++){
 			if (storage[i].t < view.min || storage[i].t > view.max) continue;
 			var selected = select.test(storage[i]);
-			ctxt.fillStyle = selected ? "#0A3" :"#F1E";
+			ctxt.fillStyle = velocity.getBoxColor(selected,storage[i].v);
 			var X = (storage[i].t-view.min)*view.k;
 			var Y = (storage[i].n-view.nmax)*view.nk;
-			ctxt.fillRect(X, Y, view.dx, view.nk);
-			ctxt.fillStyle = selected ? "#52F" :"#F00";
-			ctxt.font="20px Arial";
-			ctxt.fillText(["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"][(storage[i].n - keysig) % 12],X+view.dx+2, Y);
+			var dx = (storage[i].d) ? storage[i].d*view.k : undefined;
+			ctxt.fillRect(X, Y, dx || view.dx, view.nk);
+			if(view.max-view.min<100000){
+				ctxt.fillStyle = velocity.getTextColor(selected,storage[i].v);
+				ctxt.fillText(["1","#1","2","#2","3","4","#4","5","#5","6","#6","7"][(storage[i].n - keysig) % 12],X-view.dx, Y);
+			}
 		}
 		//Keyboard lines
 		ctxt.strokeStyle = "#BBB";
@@ -377,7 +385,43 @@ view = {
 		view.draw();
 	}
 }
-
+velocity = {
+	getBoxColor: function (s,v){
+		var rgb = velocity._HSB_to_RGB(270-v*2, s?0.5:1, s?1:0.7);
+		return "rgb("+rgb.R+","+rgb.G+","+rgb.B+")";
+	},
+	getTextColor: function (s,v){
+		var rgb = velocity._HSB_to_RGB(270-v*2, 1, s?0.6:0.2);
+		return "rgb("+rgb.R+","+rgb.G+","+rgb.B+")";
+	},
+	_HSB_to_RGB: function(H, S, B) {
+		var rgb = {R:0, G:0, B:0};
+		H = (H >= 360) ? H%360 : H;
+		if(S == 0) {
+			rgb.R = B * 255;
+			rgb.G = B * 255;
+			rgb.B = B * 255;
+		} else {
+			var i = Math.floor(H / 60) % 6;
+			var f = H / 60 - i;
+			var p = B * (1 - S);
+			var q = B * (1 - S * f);
+			var t = B * (1 - S * (1 - f));
+			switch(i) {
+				case 0: rgb.R = B, rgb.G = t, rgb.B = p; break;
+				case 1: rgb.R = q; rgb.G = B; rgb.B = p; break;
+				case 2: rgb.R = p; rgb.G = B; rgb.B = t; break;
+				case 3: rgb.R = p; rgb.G = q; rgb.B = B; break;
+				case 4: rgb.R = t; rgb.G = p; rgb.B = B; break;
+				case 5: rgb.R = B; rgb.G = p; rgb.B = q; break;
+			}
+			rgb.R = Math.floor(rgb.R * 255);
+			rgb.G = Math.floor(rgb.G * 255);
+			rgb.B = Math.floor(rgb.B * 255);
+		}
+		return rgb;
+	}
+}
 
 /**
 	Select
@@ -453,7 +497,7 @@ select = {
 		var s = recorder.ctxt;
 		select.clipboard = [];
 		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) select.clipboard.push({c:s[i].c,n:s[i].n,v:s[i].v,t:s[i].t});
+			if(select.test(s[i])) select.clipboard.push({c:s[i].c,n:s[i].n,v:s[i].v,t:s[i].t,d:s[i].d});
 		}
 	},
 	cut: function (){
@@ -473,11 +517,9 @@ select = {
 		view.draw();
 	},
 	undo: function (){
-		if(grid.enable){
-			var n = recorder.ctxt.pop();
-			view.moveP(n.t);
-			view.draw();
-		}
+		var n = recorder.ctxt.pop();
+		view.moveP(n.t);
+		view.draw();
 	}
 }
 
@@ -554,6 +596,10 @@ addEvent = {
 		var mousefini = function (evt) {
 			view.ismove = false;
 			if(evt.button == 0) select.fini();
+			if(IN.presstr.indexOf(String.fromCharCode(18))!=-1 && grid.enable){
+				select.selectedArr.forEach(function (e){e.d = grid.nearest(e.d);});
+				view.draw();
+			}
 		}
 		$(obj).addEventListener("mouseup", mousefini);
 		$(obj).addEventListener("mouseout", mousefini);
@@ -567,6 +613,11 @@ addEvent = {
 				recorder.isWait = true;
 			}else if(evt.button == 0){
 				view.ismove = true;
+				if(IN.presstr.indexOf(String.fromCharCode(18))!=-1 || IN.presstr.indexOf(String.fromCharCode(16))!=-1){
+				//hold alt: scale duration || hold shift: edit velocity
+					view.oldP = Pos.x/view.k+view.min;
+					return 0;
+				}
 				select.rect = {};
 				if(IN.presstr.indexOf(String.fromCharCode(17))==-1){//not hold ctrl -> new select area 
 					select.selectedArr = [];
@@ -583,8 +634,24 @@ addEvent = {
 			var Pos = p2p(obj,evt);
 			if(view.ismove){
 				if(evt.button == 0&&(evt.buttons!==4)){
-					select.rect.xb = Pos.x/view.k+view.min;
-					select.rect.yb = Pos.y/view.nk+view.nmax;
+					if(IN.presstr.indexOf(String.fromCharCode(18))!=-1){
+						var gap = Pos.x/view.k+view.min - view.oldP;
+						select.selectedArr.forEach(function (e){
+							e.d = e.d || 0;
+							e.d += gap;
+							if(e.d<=0)e.d = undefined;
+						});
+						view.oldP = Pos.x/view.k+view.min;
+					}else if(IN.presstr.indexOf(String.fromCharCode(16))!=-1){
+						var gap = Pos.x/view.k+view.min;
+						select.selectedArr.forEach(function (e){
+							if(e.t<view.oldP ^ e.t<gap) e.v = Math.round(Pos.y/view.nk+view.nmax);
+						});
+						view.oldP = Pos.x/view.k+view.min;
+					}else{
+						select.rect.xb = Pos.x/view.k+view.min;
+						select.rect.yb = Pos.y/view.nk+view.nmax;
+					}
 					view.draw();
 				}else if(evt.button == 1|| (evt.buttons===4)){
 					var gap = Pos.x/view.k+view.min - view.oldP;
@@ -597,10 +664,12 @@ addEvent = {
 		});
 		if(!Math.sign) Math.sign = function (x) { return typeof x === 'number' ? x ? x < 0 ? -1 : 1 : x === x ? 0 : NaN : NaN;}
 		$(obj).addEventListener("mousewheel", function (evt) { 
+			var Pos = p2p(obj,evt);
 			var dx = Math.sign(event.wheelDelta) * (view.max - view.min)*0.1;
-			if((view.max-view.min<50 && dx>0) || (view.max-view.min>1000000&& dx<0))return 0;
-			view.max -= dx;
-			view.min += dx;
+			if((view.max-view.min<50 && dx>0) || (view.max-view.min>5000000&& dx<0))return 0;
+			var ddx = Pos.x/view.width;
+			view.max -= dx*(1-ddx);
+			view.min += dx*ddx;
 			view.k = view.width / (view.max - view.min);
 			view.nk = view.height / (view.nmin - view.nmax);
 			view.draw();
@@ -612,15 +681,16 @@ addEvent = {
 			view.nk = view.height / (view.nmin - view.nmax);
 			view.draw();
 		}, false);
-		window.onbeforeunload = function(event){    
+		/*window.onbeforeunload = function(event){    
 			return 'SUI PU ANJ'; 
-		};
+		};*/
 	},
 	INKey: function (){
 		document.addEventListener('keydown', function( ev ) {
 			if(IN.presstr.indexOf(String.fromCharCode(ev.keyCode))!=-1||(!IN.enable))return 0 ;
 			var note;
 			IN.presstr += String.fromCharCode(ev.keyCode);
+			var pressnote = null;//"\t";//0x08 initial empty note
 			if(IN.presstr.indexOf(String.fromCharCode(17))!=-1&&IN.presstr.indexOf(String.fromCharCode(191))!=-1&&grid.enable){
 				// press Ctrl+? for prev grid
 				view.moveP(grid.prev());recorder.isWait = true;view.draw();
@@ -683,7 +753,13 @@ addEvent = {
 					if(ev.keyCode == 16){ //shift 
 						IN.strSharp = "";
 						IN.strFlat = "";
-					}else if(ev.keyCode == 32) IN.tempsig = 1;
+						IN.keepfirsttemp = false;
+						if(IN.presstr.indexOf(String.fromCharCode(32))==-1)IN.tempsig = 0;
+						//remove effect of space tempdig
+					}else if(ev.keyCode == 32) {
+						IN.tempsig = 1;
+						IN.keepfirsttemp = true;
+					};
 					panel.refresh();
 					view.draw();
 				}
@@ -692,14 +768,33 @@ addEvent = {
 			}
 			if(note) {
 				note = IN.ki(note);
+				IN.keepfirsttemp = false;
+				if(IN.presstr.indexOf(String.fromCharCode(32))==-1)IN.tempsig = 0;
+				//remove effect of space tempdig
+				//pressnote = String.fromCharCode(note);
 				if(grid.enable){
 					grid.IN(note);
-				}else if(!(recorder.isRecord === false)) recorder.record(0, note, PLAYER.autoVolume(note));
+				}else if(!(recorder.isRecord === false)) pressnote = recorder.record(0, note, PLAYER.autoVolume(note));
 			}
+			IN.pressnote.push(pressnote);//garant the same length between pressnote and presstr
 		});
 		document.addEventListener('keyup', function( ev ) {
-			if(ev.keyCode == 32) IN.tempsig = 0;
-			IN.presstr = IN.presstr.replace(String.fromCharCode(ev.keyCode),"");
+			var key = String.fromCharCode(ev.keyCode);
+			if(ev.keyCode == 32){
+				if(!IN.keepfirsttemp){
+					IN.tempsig = 0;
+				}
+			}
+			if(!IN.sustain){
+				var n = IN.pressnote[IN.presstr.indexOf(key)];
+				if(n){
+					MIDI.noteOff(0,n.n);
+					n.d = new Date().getTime() - n.t - recorder.offset;
+					view.draw();
+				}
+			}
+			IN.pressnote.splice(IN.presstr.indexOf(key),1);
+			IN.presstr = IN.presstr.replace(key,"");
 		});
 	}
 }
@@ -722,6 +817,7 @@ langue = {
 		this.scale = "Scale";
 		this.grid = "GRD";
 		this.tempo = "TEM";
+		this.sus = "sus";
 	},
 	zh: function(){
 		this.play = "&#x25b6;";
@@ -733,6 +829,7 @@ langue = {
 		this.scale = "缩放";
 		this.grid = "网格";
 		this.tempo = "速度";
+		this.sus = "延音";
 	},
 }
 LAN = new langue.zh();
@@ -776,9 +873,13 @@ panel = {
 			IN.mode = (IN.mode=="eop")?"ki":"eop";
 			$("EOP").innerHTML = IN.mode.toUpperCase();
 		}},
+		{name:LAN.sus, className:"greenOn", action: function (){
+			IN.sustain = !IN.sustain;
+			$(LAN.sus).className = (IN.sustain)?"greenOn":"green";
+		}},
 		{name:"volume", className:"green", action: "disabled"},
 		{name:LAN.save, className:"red", action: function (){
-			var str = recorder.toJSON(grid.enable);
+			var str = xcode.en(recorder.ctxt, grid.enable?grid.gap:0)//recorder.toJSON(grid.enable);
 			panel.set(LAN.save);
 			$("output").value = str;
 			
@@ -831,7 +932,7 @@ panel = {
 		BTN.onclick = function (){
 			Dialog.style.display = "none";
 			if(panel.dialog == LAN.open){
-				recorder.fromJSON($("output").value);
+				recorder.ctxt = xcode.de($("output").value);//recorder.fromJSON($("output").value);
 				view.draw();
 			}
 			panel.dialog = null;
