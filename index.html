@@ -4,9 +4,10 @@
 	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 	<link rel="stylesheet" type="text/css" href="style.css">
 	<title>Eop</title>
-	<script src="js/wxyCode.js" type="text/javascript"></script>
-	<script src="js/Base64binary.js" type="text/javascript"></script>
-	<script src="js/Note.js" type="text/javascript"></script>
+	<script src="js/wxycode.js" type="text/javascript"></script>
+	<script src="js/exportMidi.js" type="text/javascript"></script>
+	<script src="js/base64binary.js" type="text/javascript"></script>
+	<script src="js/note.js" type="text/javascript"></script>
 	<script type="text/javascript">
 	try{
 		if (/Android|webOS|iPhone|BlackBerry/i.test(navigator.userAgent)&&(location.search=='')) {
@@ -14,25 +15,31 @@
 		}
 	}catch(e){}
 	window.onload = function () {
-		MIDI.load(["acoustic_grand_piano"]);
 		MIDI.onsuccess = function (){
 			view.runAt$("notearea");
-			MIDI.noteOn(0,62,100,0);
+			$("progress").style.display = "none";
+			MIDI.noteOn(0,60,60,0);
+			MIDI.noteOn(0,64,60,0);
+			MIDI.noteOn(0,55,60,0);
 		}
+		MIDI.load(["acoustic_grand_piano"]);
 	}
 	</script>
 
 </head>
 <body>
 	<canvas id="notearea"></canvas>
+	<div id="progress">浏览器正在尝试创建音频对象，如果不成功则说明您的浏览器不支持音频对象或javascript脚本错误。</div>
 	<div id="txthelp">
-	<h2>EOP 类似物</h2><p>--by wxy</p>
-	<p><b>EOP键盘模式</b>：每排字母从1开始，按住空格键输入时，所有音升半音，使用空格输入临时变音。当需要固定变某些音时，使用方向键可以升高这些音：1/4/5/6，升高的音在面顶部板#号后出现；按住左上角“~”键再按方向键可降半音：2/3/6/7，降低的音在面顶部板b号后出现。按Shift键可清除所有升降号。</p><p>Shift+~：向上移调；Alt+~：向下移调。</p>
-	<p><b>Ki键盘模式</b>：点击“EOP”按钮可切换。模仿真实钢琴键盘，其中zxcv、qwer排是白键，另外两排是黑键。</p>
-	<p><b>网格对齐</b>编辑模式：<b>注意在这种模式下保存输出比非网格模式精度低，如果音没与最小网格完全对齐，推荐保存时关闭网格模式。</b></p>
+	<h2>钢琴/音符编辑器（EOP 类似物）</h2><p>--by wxy</p>
+	<p><b>EOP键盘模式</b>：特点是每排字母从1（do）开始。
+	半音的弹奏方法：按住空格键弹奏会升半音，释放后复原；但如果按住空格键期间（直到释放之前）没弹奏音符，那么下一个将要弹奏的音符也会升半音。如果不小心按了空格键可以按一下Shift键取消升下一个音。
+	当需要固定变某些音时，使用方向键可以升高这些音：1/4/5/6，升高的音在面顶部板#号后出现；按住左上角“~”键再按方向键可降半音：2/3/6/7，降低的音在面顶部板b号后出现。按Shift键可清除所有升降号。</p><p>Shift+~：向上移调；Alt+~：向下移调。</p>
+	<p><b>Ki键盘模式</b>：点击“EOP”按钮可切换。模仿真实钢琴键盘。</p>
+	<p><b>网格对齐</b>编辑模式：<b>网格模式下输入完一个音，当前时间会自动移动到下一格等待输入。同时或很快地输入多个音将会被认为是和弦。按右下角“/”键不输入音符当前时间直接右移，同理Ctrl+/当前时间直接左移。注意在这种模式下保存输出比非网格模式精度低，精度为大网格的1/12，勉强能表示琶音。如果需要更多精度，推荐保存时关闭网格模式。</b></p>
 	<p>网格设置：点击面顶部板“速度”按钮，在速度面板第一栏上设置播放速度的倍数（不影响真实速度），点击“缩放”按钮才会改变真实速度。第二栏为直接的速度设置，&#9833; = a 表示每分钟播放a个大网格。点击“缩放”会改变真实速度，点击Set只会改变网格，不会缩放已有的音符，但有可能导致音符不对齐网格。</p>
-	<p>按 Ctrl+方向键可以细分网格至1/2、1/3、1/4，网格模式下保存输出精度为网格的1/12，足以记录这些细分网格。</p>
-	<p><b>音符输入</b>：非网格模式会实时记录键盘输入，精度为毫秒，网格模式下输入完一个音，当前时间会自动移动到下一格等待输入。同时或很快地输入多个音将会被认为是和弦。按右下角“/”键不输入音符当前时间直接右移，同理Ctrl+/当前时间直接左移。</p>
+	<p>按 Ctrl+方向键可以细分网格至1/2、1/3、1/4。</p>
+	<p><b>音符输入</b>非网格模式会实时记录键盘输入，精度为毫秒，但保存的文件会很大</p>
 	<p>音符时值、力度、切换乐器、多通道等功能还在开发中。。。</p>
 	</div>
 </body>

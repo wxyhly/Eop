@@ -47,6 +47,17 @@ xcode.enShort = function (n,t){
 	return xcode.dtob((n<<5) + t);
 	// n tt 2^5
 }
+xcode.enLong = function (a,b){
+	return xcode.dtob((a<<6) + b);
+}
+xcode.deLong = function (txt){
+	var s = [];
+	for(var i=0; i<txt.length; i++){
+		var ji = xcode.btod(txt[i]);
+		s.push(ji>>6,ji&63);
+	}
+	return s;
+}
 xcode.deShort = function (arr, pos){
 	var bit = xcode.btod(arr[pos.p]);
 	var n = bit>>5;
@@ -101,18 +112,48 @@ xcode.en = function (ctxt,grid){
 	for(var i=0; i<ctxt.length; i++){
 		S += xcode.enShort(txt[i].n,txt[i].t);
 	}
+	if(true){
+		S+="，";
+		for(var i=1; i<ctxt.length; i+=2){
+			S += xcode.enLong(Math.round(txt[i-1].v/2),Math.round(txt[i].v/2));
+		}
+		if(i<ctxt.length-1){
+			S += xcode.enLong(txt[i+1].v/2,0);
+		}
+	}
 	return S;
 }
 xcode.de = function (txt){
 	var pos = {p:0};
-	var bpm = txt.split("|");
+	var vel = txt.split("，");
+	var bpm = vel[0].split("|");
 	var ctxt = [];
 	var g = 0;
-	grid.enable = false;
-	if(bpm.length>1){grid.enable = true;txt = bpm[1];g = grid.gap = 60000/bpm[0];}
+	grid.set(false);
+	txt = vel[0]
+	if(bpm.length>1){grid.set(true);txt = bpm[1];g = grid.gap = 60000/bpm[0];}
 	while (pos.p < txt.length){
 		ctxt.push(xcode.deShort(txt, pos));
 		pos.p++;
 	}
+	if(vel.length>1){
+		var velocities = xcode.deLong(vel[1]);
+		for(var i=0; i<ctxt.length; i++){
+			ctxt[i].v = velocities[i]*2;
+		}
+	}
 	return xcode.integ(ctxt,g);
+}
+
+
+//below not use yet
+xcode.zip = function (txt){
+	var r = "";
+	for(var i = 0, l = txt.length; i < l; i++) {
+		for(var j = i + 1; j < l; j++)
+			if (txt[i] === txt[j]) j = ++i;
+		r += txt[i];
+	}
+	if(r.length<256) return r;
+	return false;
 }

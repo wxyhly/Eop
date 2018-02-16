@@ -2,4 +2,5 @@
 *.txt
 gitignore/*
 soundfont/*
+example_sheet/*
 !soundfont/acoustic_grand_piano-ogg.js
