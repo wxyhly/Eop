@@ -58,15 +58,17 @@ MIDI = {
 		}
 		MIDI.onprogress("正在下载音源。。。Downloading Soundfonts...");
 		for(var i=0; i<sf.length; i++){
-			var xmlhttp = new XMLHttpRequest();
-			xmlhttp.onprogress = function (event) {
+			var scriptNode = document.createElement('script');
+			scriptNode.src = "soundfont/"+sf[i]+"-ogg.js";
+			scriptNode.async = true;
+			scriptNode.addEventListener('progress', function(event){
 				MIDI.onprogress("正在下载通道"+i+"："+event.loaded+" / "+event.total);
-			};
-			xmlhttp.onerror = function (){
+			});
+			scriptNode.addEventListener('error', function(){
 				MIDI.onprogress("哦豁，下载音源失败。。。");
-			}
-			xmlhttp.onload = function (i,sf_i,xmlhttp){
-				eval(xmlhttp.responseText);
+			});
+			scriptNode.addEventListener('load', function (i,sf_i){
+				// eval(xmlhttp.responseText);
 				MIDI.loadProgress[i] = 0;
 				MIDI.audioBuffers[i] = [];
 				MIDI.onprogress(MIDI.loadProgress);
@@ -80,9 +82,34 @@ MIDI = {
 						testsuccess();
 					}.bind(undefined, MIDI.keyToNote[e]));
 				}
-			}.bind(undefined, i, sf[i], xmlhttp);
-			xmlhttp.open("GET","soundfont/"+sf[i]+"-ogg.js",true);
-			xmlhttp.send();
+			}.bind(undefined, i, sf[i]));
+			document.getElementsByTagName('body')[0].appendChild(scriptNode);
+			// var xmlhttp = new XMLHttpRequest();
+			// xmlhttp.onprogress = function (event) {
+			// 	MIDI.onprogress("正在下载通道"+i+"："+event.loaded+" / "+event.total);
+			// };
+			// xmlhttp.onerror = function (){
+			// 	MIDI.onprogress("哦豁，下载音源失败。。。");
+			// }
+			// xmlhttp.onload = function (i,sf_i,xmlhttp){
+			// 	eval(xmlhttp.responseText);
+			// 	MIDI.loadProgress[i] = 0;
+			// 	MIDI.audioBuffers[i] = [];
+			// 	MIDI.onprogress(MIDI.loadProgress);
+			// 	for(var e in MIDI.Soundfont[sf_i]){
+			// 		var url = MIDI.Soundfont[sf_i][e];
+			// 		var buff = Base64Binary.decodeArrayBuffer(url.split(',')[1]);
+			// 		context.decodeAudioData(buff, function(n,b){
+			// 			MIDI.audioBuffers[i][n] = b;
+			// 			MIDI.loadProgress[i]++;
+			// 			MIDI.onprogress(MIDI.loadProgress);
+			// 			testsuccess();
+			// 		}.bind(undefined, MIDI.keyToNote[e]));
+			// 	}
+			// }.bind(undefined, i, sf[i], xmlhttp);
+			// xmlhttp.open("GET","soundfont/"+sf[i]+"-ogg.js",true);
+			// xmlhttp.send();
+
 		}
 		var passed = false;
 		var testsuccess = function (){
