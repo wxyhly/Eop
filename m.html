@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -15,6 +16,15 @@ div.key {
 	font-size:16px;
 	background-position: bottom left;
 	background-repeat: repeat-x;
+}
+div#progress {
+	position: absolute;
+	text-align: center;
+	font-size:26px;
+	color: #FF0000;
+	width:100%;
+	top: 10px;
+	z-index:1000000;
 }
 div.key1{
 	right:70%;
@@ -43,6 +53,7 @@ div.blackKey {
 }
 </style>
 <body class="hqekler">
+<div id="progress">浏览器正在尝试创建音频对象，如果不成功则说明您的浏览器不支持音频对象或javascript脚本错误。</div>
 </body>
 <script>
 function addKey(noteNumber,startOctave,panel){
@@ -66,11 +77,10 @@ function fullscreen(){
 	var el = document.documentElement;
 	var rfs = el.requestFullScreen || el.webkitRequestFullScreen;
 	rfs.call(el);
-	//alert("haha");
 }
 window.onload = function () {
 	MIDI.load(["acoustic_grand_piano"]);
-	//document.body.webkitRequestFullscreen();
+	document.body.webkitRequestFullscreen();
 	var startOctave = -2;
 	for(var i = startOctave*12+60;i<startOctave*12+100;i++){
 		addKey(i,startOctave,"key1");
@@ -85,6 +95,7 @@ window.onload = function () {
 	}
 	MIDI.onsuccess = function (){
 		MIDI.noteOn(0,62,30,0);
+		$("progress").style.display = "none";
 	}
 }
 

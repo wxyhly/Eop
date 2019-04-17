@@ -1,2 +1,4 @@
 # Eop
-An online piano player and midi editer (but the function of outputing midi file is not finished)
+An online piano player and midi editer that can import/export midi file.
+
+Adress: https://wxyhly.github.io/Eop/

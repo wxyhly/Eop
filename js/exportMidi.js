@@ -1,10 +1,37 @@
 var ExpMidi = function(){};
-ExpMidi.writeNote = function(open, noteObj) {
-	open = open.concat(ExpMidi.intTobuff(Math.round(noteObj.t/ExpMidi.timeScale)));
-	open.push(noteObj.n, Math.round(noteObj.v));
+ExpMidi.changeState = function(open,state){
+	if(state == 0xFF|| ExpMidi.state != state){
+		open.push(state);
+		ExpMidi.state = state;
+	}
+}
+ExpMidi.writeEvent = function(open, noteObj) {
+	if(noteObj.e=="speed"){
+		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
+		ExpMidi.changeState(open,0xFF);
+		open.push(0x51, 3, (noteObj.v)>>16, ((noteObj.v)>>8)&0xFF, (noteObj.v)&0xFF);
+	}else if(noteObj.n && noteObj.v >= 0){
+		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
+		console.log(noteObj.dt);
+		ExpMidi.changeState(open,ExpMidi.noteOn);
+		open.push(noteObj.n, Math.round(noteObj.v));
+	}else if(noteObj.e=="sustain"){
+		console.log(noteObj.dt);
+		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
+		ExpMidi.changeState(open,ExpMidi.cc);
+		open.push(64, noteObj.v);
+	}
 	return open;
 }
-
+ExpMidi.noteOn = 0x90;
+ExpMidi.cc = 0xB0;
+ExpMidi.diff = function (events){
+	events.sort(function(a,b){return a.t - b.t});
+	for(var i=0; i<events.length; i++){
+		events[i].dt = i ? Math.round(recorder.ms2q(events[i].t)*ExpMidi.tickPerGap)-Math.round(recorder.ms2q(events[i-1].t)*ExpMidi.tickPerGap) : (events[i].t<0)?0:Math.round(recorder.ms2q(events[i].t)*ExpMidi.tickPerGap);
+	}
+	return events;
+}
 ExpMidi.intTobuff = function(i){
 	var arr = [];
 	arr.push(i&0x7F);
@@ -16,41 +43,104 @@ ExpMidi.intTobuff = function(i){
 	arr.reverse();
 	return arr;
 }
+ExpMidi.touTrack = function(){
+	return [
+		0x00, 0xFF, 0x51, 0x03, (ExpMidi.gap)>>16, ((ExpMidi.gap)>>8)&0xFF, (ExpMidi.gap)&0xFF, //速度
+		0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x00, 0x00,  //拍号
+		0x00, 0xFF, 0x2F, 0x00 //end
+	];
+	//gap 是一个四分音符的ms数，但MIDI设置的是四分音符的us数，suu mise 1000
+}
 ExpMidi.generate = function() {
 	var tracks = 0;
-	var gap = grid.gap||500;
-	gap = Math.round(gap);
-	ExpMidi.timeScale = gap/120;
+	var gap = recorder.speed[0].v;
+	gap = Math.round(gap*1000);
+	//gap 是一个四分音符的ms数，但MIDI设置的是四分音符的us数，suu mise 1000
+	ExpMidi.gap = gap;
+	ExpMidi.tickPerGap = 120;
+	ExpMidi.state = null;
 	var nctxt = recorder.ctxt;
 	var nnctxt = [];
 	for(var i=0; i<nctxt.length; i++){
 		var ct = nctxt[i];
-		nnctxt.push(ct);
-		nnctxt.push({
+		if(!nnctxt[ct.c])nnctxt[ct.c] = [];
+		nnctxt[ct.c].push(ct);
+		nnctxt[ct.c].push({
 			n: ct.n,
 			v: 0,
 			c: ct.c,
-			t: ct.t+(ct.d||(gap/2))
+			t: ct.t+(ct.d||(gap/2000))
+		});
+		
+	}
+	for(var i in recorder.channels){
+		var ce = recorder.channels[i].sustain;
+		for(var e of ce){
+			if(!nnctxt[ct.c])nnctxt[ct.c] = [];
+			nnctxt[i].push({t:e.t,v:e.v?127:0,e:"sustain"});
+		}
+	}
+	for(var i in nnctxt){
+		ExpMidi.diff(nnctxt[i]);
+		nnctxt[i].instrumentId = MIDI.channels[i].soundfontConfig.instrumentId;
+	}
+	var tracks = 1;
+	for(var i of nnctxt){
+		if(!i || !i.length) continue;
+		tracks++;
+	}
+	var header = [0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, (tracks>>8)&0xFF, tracks&0xFF,0x00, 0x78];
+	//总轨：
+	var trackMTrk = [0x4D, 0x54, 0x72, 0x6B];
+	var allTrack = [];
+	for(var e of recorder.speed){
+		allTrack.push({
+			e:"speed",
+			t:e.t,
+			v:Math.round(e.v*1000)
 		});
 	}
-	nnctxt.sort(function(a,b){return a.t - b.t});
-	nnctxt = xcode.diff(nnctxt);
-	var header = [0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0x00, 2,0x00, 0x78];// (gap>>8)&0xFF, gap&0xFF
-	var trackHeader = [0x4D, 0x54, 0x72, 0x6B];
-	var TouTrack = [0x00, 0xFF, 0x51, 0x03, (gap*1000)>>16, ((gap*1000)>>8)&0xFF, (gap*1000)&0xFF,0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x00, 0x00, 0x00, 0xFF, 0x59, 0x02, 0x03, 0x00];
-	var data = header.concat(trackHeader).concat([0x00, 0x00, 0x00, 0x15]).concat(TouTrack).concat(trackHeader);
-	//.concat([0,0,0,8,   0x00,0x96,0x45,0x60,0x3c,0x96,0x45,0x00]);
-	//var NoteTrack = [0x00, 0 + 0x90,0x30,0x01];
-	var NoteTrack = [0x00,0x96,0x20,0x00];//[0x3c,0x45,0x60,0x3c,0x45,0x00];
-	var notes = [];
-	for(var i=0; i<nnctxt.length; i++){
-		notes = ExpMidi.writeNote(notes,nnctxt[i]);
+	for(var e of recorder.timeSig){
+		allTrack.push({
+			e:"timeSig",
+			t:e.t,
+			v:[e.v[0],e.v[1]==1?0:e.v[1]==2?1:e.v[1]==4?2:e.v[1]==8?3:e.v[1]==2?4:5]
+		});
 	}
-	var varydata = NoteTrack.concat(notes);
+	ExpMidi.diff(allTrack);
+	var varydata = [0x00, 0xFF, 0x58, 0x04, 0x04, 0x02, 0x00, 0x00];  //拍号
+	for(var i=0; i<allTrack.length; i++){
+		varydata = ExpMidi.writeEvent(varydata, allTrack[i]);
+	}
+	varydata.push(0x00,0xFF,0x2F,0x00);
 	var l = varydata.length;
-	data = data.concat([l>>24, (l>>16)&0xFF, (l>>8)&0xFF, l&0xFF]).concat(varydata);
+	var data = header.concat(trackMTrk).concat([l>>24, (l>>16)&0xFF, (l>>8)&0xFF, l&0xFF]).concat(varydata);
+	//全局轨：（速度、节拍）
+	/*ExpMidi.state = null;
 	
 	
+	tracks++;
+	
+	var varydata = [];
+	for(var i=0; i<allTrack.length; i++){
+		varydata = ExpMidi.writeEvent(varydata, allTrack[i]);
+	}
+	varydata.push(0x00,0xFF,0x2F,0x00);
+	var l = varydata.length;
+	data = data.concat(trackMTrk).concat([l>>24, (l>>16)&0xFF, (l>>8)&0xFF, l&0xFF]).concat(varydata);
+	*/
+	//分轨：
+	for(var nc of nnctxt){
+		ExpMidi.state = null;
+		if(!nc || !nc.length) continue;
+		var varydata = [];//[0x00,0xC0,nc.instrumentId];
+		for(var i=0; i<nc.length; i++){
+			varydata = ExpMidi.writeEvent(varydata, nc[i]);
+		}
+		varydata.push(0x00,0xFF,0x2F,0x00);
+		var l = varydata.length;
+		data = data.concat(trackMTrk).concat([l>>24, (l>>16)&0xFF, (l>>8)&0xFF, l&0xFF]).concat(varydata);
+	}
 	var binary = new Uint8Array(data);
 	ExpMidi.blob = new Blob([binary],{type:"application/octet-binary"});
 }
