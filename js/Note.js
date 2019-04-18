@@ -49,7 +49,7 @@ MIDI = {
 		xmlhttp.send();
 	},
 	loadSoundFont : function(config,onsuccess,id){
-		id = id || (id === 0)? 0: MIDI.trackBuffers.length;
+		id = id || (id === 0? 0: MIDI.trackBuffers.length);
 		MIDI.trackBuffers[id] = [];
 		var channel = MIDI.channels[id] = new Channel(MIDI.context, config);
 		if(!recorder.channels[id]) recorder.initChannel(id,channel);//防重写cc
@@ -1735,6 +1735,7 @@ panel = {
 		MIDI.loadSoundFont(sf,function (){
 			$("ChannelProgress").innerHTML = '';
 		},id);
+		IN.channel = 0;
 		panel.refreshChannelPanel();
 	}
 }
