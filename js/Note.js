@@ -986,6 +986,30 @@ select = {
 		}
 		view.draw();
 	},
+	scale: function (scale){
+		var s = recorder.ctxt;
+		var minQ = Infinity;
+		for(var i = 0; i < s.length; i++){
+			if(select.test(s[i])) {
+				if(!s[i].q) {
+					s[i].q = recorder.ms2q(s[i].t);
+					s[i].dq = recorder.ms2q(s[i].t+s[i].d);
+				}
+				minQ = Math.min(s[i].q,minQ);
+			}
+		}
+		for(var i = 0; i < s.length; i++){
+			if(select.test(s[i])) {
+				s[i].q = (s[i].q - minQ)*scale + minQ;
+				s[i].t = recorder.q2ms(s[i].q);
+				if(s[i].d){
+					s[i].dq = (s[i].dq - minQ)*scale + minQ;
+					s[i].d = recorder.q2ms(s[i].dq)-s[i].t;
+				}
+			}
+		}
+		view.draw();
+	},
 	copy: function (){
 		recorder.sort();
 		var s = recorder.ctxt;
@@ -1185,7 +1209,7 @@ addEvent = {
 					view.draw();
 				}
 				if(IN.on[16]||IN.on[17]||IN.on[18]){
-					//Ctrl+右键改sustain，shift+右键缩放音量，Alt+右键也可scale duration
+					//Ctrl+右键改sustain，shift+右键缩放音量，Alt+右键整体缩放音符
 					view.oldPy = Pos.y;
 					view.oldP = Pos.x/view.k+view.min;
 					view.ismove = true;
@@ -1222,46 +1246,46 @@ addEvent = {
 		$(obj).addEventListener("mousemove", function (evt) { 
 			var Pos = p2p(obj,evt);
 			if(view.ismove){
-				if(evt.buttons == 2 && IN.on[17]){
+				if(evt.buttons == 2 && IN.on[17]){//Ctrl+右键：sustain
 					select.sustain = [view.oldP, Pos.x/view.k+view.min];
 					view.draw();
-				}else if(speedTrack.toAppendPoint && IN.on[18] && speedTrack.visible && evt.buttons == 2){
+				}else if(speedTrack.toAppendPoint && IN.on[18] && speedTrack.visible && evt.buttons == 2){//Alt+右键：speed
 					speedTrack.toAppend(Pos);
 					speedTrack.changeAppend();
 					view.ismove = true;
 					view.draw();
-				}else if(evt.buttons == 2 && IN.on[16]){
+				}else if(evt.buttons == 2 && IN.on[16]){//shift+右键：力度缩放
 					select.selectedArr.forEach(function (e){
 						var scl = (view.height-Pos.y)/(view.height-view.oldPy);
 						e.v = Math.min(e.v*scl,126);
 					});
 					view.draw();
 					view.oldPy = Pos.y;
-				}else if(speedTrack.select && evt.buttons == 1 && speedTrack.visible){
+				}else if(speedTrack.select && evt.buttons == 1 && speedTrack.visible){//Alt+左键：speed
 					//不选中音符时，按Alt拖动选择控制点
 					speedTrack.select[1] = Pos.x/view.k+view.min;
 					view.draw();
-				}else if((evt.button == 0 || evt.button == 2 )&&(evt.buttons!==4)){
-					if(IN.on[18]){
-						var gap = Pos.x/view.k+view.min - view.oldP;
-						select.selectedArr.forEach(function (e){
-							e.d = e.d || 0;
-							e.d += gap;
-							if(e.d<=0)e.d = undefined;
-						});
-						view.oldP = Pos.x/view.k+view.min;
-					}else if(IN.on[16]){
-						var gap = Pos.x/view.k+view.min;
-						select.selectedArr.forEach(function (e){
-							if(e.t<view.oldP ^ e.t<gap) e.v = Math.min(Math.round(view.height-Pos.y),127);
-						});
-						view.oldP = Pos.x/view.k+view.min;
-					}else{
-						select.rect.xb = Pos.x/view.k+view.min;
-						select.rect.yb = Pos.y/view.nk+view.nmax;
-					}
+				}else if(evt.buttons==1 && IN.on[18]){//alt+左键：缩放时值
+					var gap = Pos.x/view.k+view.min - view.oldP;
+					select.selectedArr.forEach(function (e){
+						e.d = e.d || 0;
+						e.d += gap;
+						if(e.d<=0)e.d = undefined;
+					});
+					view.oldP = Pos.x/view.k+view.min;
 					view.draw();
-				}else if(evt.button == 1|| (evt.buttons===4)){
+				}else if(evt.buttons==1 && IN.on[16]){//shift+左键：力度绘制
+					var gap = Pos.x/view.k+view.min;
+					select.selectedArr.forEach(function (e){
+						if(e.t<view.oldP ^ e.t<gap) e.v = Math.min(Math.round(view.height-Pos.y),127);
+					});
+					view.oldP = Pos.x/view.k+view.min;
+					view.draw();
+				}else if(evt.buttons!==4){
+					select.rect.xb = Pos.x/view.k+view.min;
+					select.rect.yb = Pos.y/view.nk+view.nmax;
+					view.draw();
+				}else if(evt.buttons===4){
 					var gap = Pos.x/view.k+view.min - view.oldP;
 					view.min -= gap;
 					view.max -= gap;
@@ -1332,6 +1356,12 @@ addEvent = {
 					break;
 					case 86://V
 						select.paste();
+					break;
+					case 219://[
+						select.scale(0.5);
+					break;
+					case 221://]
+						select.scale(2);
 					break;
 					default:
 						note = {37: 1, 38: 4, 39: 3, 40: 2}[ev.keyCode];
@@ -1627,6 +1657,7 @@ panel = {
 		var BTN = document.createElement("BUTTON");
 		var BROWSE = document.createElement("INPUT");
 		BROWSE.type = "file";
+		BROWSE.accept = ".midi";
 		BTN.innerHTML = LAN.open;
 		panel.btnJe = BTN;
 		panel.input_browse = BROWSE;
