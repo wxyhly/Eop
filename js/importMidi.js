@@ -29,12 +29,17 @@ ImpMidi.decode = function(){
 	ImpMidi.data = new DataView(ImpMidi.buffer);
 	ImpMidi.offset = 0;
 	ImpMidi.EOFStack.push(ImpMidi.buffer.byteLength);
-	var header = [0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01];
+	var header = [0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00];
 	for(var i of header){
 		if(i != ImpMidi.next()){
 			ImpMidi.msg("意外文件头格式！");
 			return 0;
 		}
+	}
+	var format = ImpMidi.next();
+	if(format != 0 && format!=1){
+		ImpMidi.msg("不支持的MIDI文件格式！");
+		return 0;
 	}
 	var out = {};
 	ImpMidi.out = out;
@@ -112,7 +117,7 @@ ImpMidi.nextEvent = function(tr){
 			ImpMidi.EOFStack.pop();
 	}
 	ImpMidi.out.tracks[tr].push(e);
-	ImpMidi.msg("事件"+e.e.toString(16)+"");
+	ImpMidi.msg("事件"+e.e.toString(16)+(e.e == 0xFF ? "-"+e.e1.toString(16):""));
 }
 ImpMidi.next = function(){
 	if(ImpMidi.offset >= ImpMidi.EOFPos())return ImpMidi.EOF();
@@ -164,13 +169,15 @@ ImpMidi.keySig = 0x59;
 ImpMidi.getSF = function(instrument){
 	var config = SoundfontConfigs["piano"];//par default
 	if(1<=instrument && instrument<=8) config = SoundfontConfigs["piano"];
-	if(instrument==43) config = SoundfontConfigs["cello"];
+	if(41<=instrument && instrument<=48) config = SoundfontConfigs["cello"];
+	if(25<=instrument && instrument<=32) config = SoundfontConfigs["guitar"];
 	return config;
 }
 ImpMidi.loadToCtxt = function(out){
 	var tracks = [];
 	recorder.ctxt = [];
 	recorder.channels = [];
+	MIDI.channels = [];
 	recorder.speed = [];
 	out.speed = [];
 	out.timeSig = [];
@@ -181,11 +188,17 @@ ImpMidi.loadToCtxt = function(out){
 			ImpMidi.mergeOnOff(out.tracks[i]);
 			panel.addSoundFont(ImpMidi.getSF(out.tracks[i].instrument),index);
 		}
+		//out.tracks[i].isEmpty = isEmpty;
+		out.tracks[i].index = index;
+		if(!isEmpty) {
+			index++;
+		};
+	}
+	for(var i in out.tracks){
 		for(var e of out.tracks[i]){
-			
 			if(ImpMidi.is(e) == ImpMidi.noteOn){//一定非空
 				recorder.ctxt.push({
-					c: index,
+					c: out.tracks[i].index,
 					d: e.d ? ImpMidi.getDuration(e.t, e.t + e.d) : 0,
 					n: e.n,
 					t: ImpMidi.getDuration(0,e.t),
@@ -193,16 +206,14 @@ ImpMidi.loadToCtxt = function(out){
 				})
 			};
 			if(ImpMidi.is(e) == ImpMidi.sustain){
-				recorder.channels[index].sustain.push({
+				recorder.channels[out.tracks[i].index].sustain.push({
 					t: ImpMidi.getDuration(0,e.t),
 					v: e.v == 0 ? false : true
 				});
 			}
 		}
-		if(!isEmpty) {
-			index++;
-		};
 	}
+		
 	//全局：
 	for(var e of ImpMidi.out.speed){
 		recorder.speed.push({
