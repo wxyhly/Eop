@@ -173,7 +173,7 @@ MIDI = {
 	cc_default:
 	{
 		"sustain": false,
-		"gainNode": 1,
+		"volume": 100,
 	}
 }
 var A0 = 0x15; // first note
@@ -343,6 +343,7 @@ recorder = {
 	isRecord: true,
 	isPlaying: 0,//notes not played yet
 	isWait: true,  // wait for pressing a key, then time start to run
+	isQuantify: false,
 	startSusTime: null,
 	offset: new Date().getTime(),
 	playbackSpeed: 1,
@@ -358,12 +359,12 @@ recorder = {
 	},
 	play: function (){
 		recorder.stop();
-		recorder.offset = Math.round(new Date().getTime() - view.p)
+		recorder.offset = Math.round(new Date().getTime() - view.p);
 		recorder.isWait = false;
 		
 		var stor = recorder.ctxt;
 		for(var i = 0; i < stor.length; i++){
-			var dt = Math.floor((stor[i].t - view.p)/recorder.playbackSpeed);
+			var dt = Math.round((stor[i].t - view.p)/recorder.playbackSpeed);
 			if (dt < -0.01) continue;//希望不漏播t=0处的声音
 			recorder.isPlaying++;
 			//console.log("start");
@@ -371,7 +372,7 @@ recorder = {
 				recorder.isPlaying--;
 				if(recorder.isPlaying <= 0){
 					recorder.isWait = true;
-					//console.log("stop")
+					recorder.isQuantify = false;
 				}
 			});
 			//move View Pointer:
@@ -404,9 +405,9 @@ recorder = {
 								}
 							};
 							break;
-						case "gainNode":
+						case "volume":
 							cb = function (k,target,i){
-								target.gainNode.gain.value = k.v;
+								target.gainNode.gain.value = k.v/100;
 								view.moveP(k.t);
 							}
 					}
@@ -422,6 +423,7 @@ recorder = {
 		//stop now
 		//stop futur
 		recorder.isPlaying = 0;
+		recorder.isQuantify = false;
 		for(var i = 0; i < 500000; i++){
 			clearTimeout(i);
 		}
@@ -430,6 +432,16 @@ recorder = {
 				MIDI.stop(c,i);
 			}
 		}
+	},
+	goBack: function (){
+		recorder.isWait = true;
+		recorder.isQuantify = false;
+		if(!recorder.ctxt.length) {
+			view.moveP(0);
+			return 0;
+		}
+		recorder.sort();
+		view.moveP(recorder.ctxt[0].t);
 	},
 	q2ms: function(q1,q2){//quad to ms
 		if(!q2>=0){q2 = q1; q1 = 0;}
@@ -492,7 +504,7 @@ recorder = {
 			for(var j of i.sustain){
 				j.q = recorder.ms2q(j.t);
 			}
-			for(var j of i.gainNode){
+			for(var j of i.volume){
 				j.q = recorder.ms2q(j.t);
 			}
 		}
@@ -513,7 +525,7 @@ recorder = {
 			for(var j of i.sustain){
 				j.t = recorder.q2ms(j.q);
 			}
-			for(var j of i.gainNode){
+			for(var j of i.volume){
 				j.t = recorder.q2ms(j.q);
 			}
 		}
@@ -539,7 +551,7 @@ recorder = {
 	},
 	initChannel: function(id){
 		recorder.channels[id] = {
-			gainNode:[],
+			volume:[],
 			sustain:[]
 		};
 	},
@@ -589,6 +601,34 @@ recorder = {
 			}
 		}
 		return c[i].v;
+	},
+	recordQuantify: function(){
+		recorder.stop();
+		view.moveP(recorder.q2ms(Math.round(recorder.ms2q(view.p))));
+		recorder.offset = Math.round(new Date().getTime() - view.p);
+		recorder.isWait = false;
+		recorder.isQuantify = true;
+		var loop = function(time){
+			if(!(recorder.isQuantify && !recorder.isWait))return 0;
+			var nextTime = recorder.q2ms((recorder.ms2q(view.p) + 1));
+			view.moveP(time);
+			recorder.offset = Math.round(new Date().getTime() - view.p);//防误差累计
+			view.draw();
+			MIDI.noteOn(0,92,100);
+			setTimeout(MIDI.noteOff(0,92,100),200);
+			
+			var stor = recorder.ctxt;
+			for(var i = 0; i < stor.length; i++){
+				var dt = Math.round((stor[i].t - time));
+				if (stor[i].t >= nextTime-0.01) continue;//希望不漏播t=0处的声音
+				if (dt < -0.01) continue;//希望不漏播t=0处的声音
+				PLAYER.play(stor[i].c, stor[i].n, stor[i].v, dt, stor[i].d);
+			}
+			
+			
+			setTimeout(loop.bind(null,nextTime),nextTime-time);//节拍器
+		}
+		loop(view.p);//对齐大拍子
 	}
 }
 
@@ -630,7 +670,7 @@ view = {
 	},
 	setP:function(view_p){
 		view.p = view_p;
-		MIDI.channels[IN.channel].gainNode.gain.value = recorder.getEventAt(IN.channel,"gainNode",view_p);
+		MIDI.channels[IN.channel].gainNode.gain.value = recorder.getEventAt(IN.channel,"volume",view_p)/100;
 		MIDI.channels[IN.channel].sustain = recorder.getEventAt(IN.channel,"sustain",view_p);
 		$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 	},
@@ -690,7 +730,7 @@ view = {
 			}
 		}
 		eventBar.draw(IN.channel,"sustain");
-		eventBar.draw(IN.channel,"gainNode");
+		eventBar.draw(IN.channel,"volume");
 		speedTrack.draw(ctxt);
 		//Start and Pos lines
 		ctxt.beginPath();
@@ -761,10 +801,15 @@ velocity = {
 eventBar = {
 	color:{
 		sustain: "rgb(0,0,255)",
-		gainNode: "rgb(0,99,0)"
+		volume: "rgb(0,99,0)"
+	},
+	scaleY: {
+		volume: 0.2,
+		speed: -2
 	},
 	draw:function (channel, name){
 		var evts = recorder.channels[channel][name];
+		if(!volumeTrack.visible && name == "volume")return 0;
 		if(select.sustain && select.sustain[0]!=select.sustain[1] && name == "sustain"){//鼠标正在拖动sustain
 			select.sustainEvt = [];
 			var value1 = recorder.getEventAt(channel,name,select.sustain[0]);
@@ -793,7 +838,7 @@ eventBar = {
 			if(evts[i].t > view.max) break;
 			var X1 = (evts[i].t-view.min)*view.k;
 			var X2 = (i+1 == evts.length)? (view.max-view.min)*view.k :(evts[i+1].t-view.min)*view.k;
-			var Y = (evts[i].v === true)? 1 : (evts[i].v === false)? 0 : evts[i].v;
+			var Y = (evts[i].v === true)? 1 : (evts[i].v === false)? 0 : evts[i].v*eventBar.scaleY[name];
 			Y *= view.nk;
 			ctxt.fillStyle = "rgba"+ii.substring(3,ii.length-1)+",0.3)";
 			ctxt.fillRect(X1,view.height,X2-X1,Y);		
@@ -810,16 +855,12 @@ eventBar = {
 		});
 	}
 }
-
-/**
-	Select
-		draw(ctxt: Ctxt);
-		fini();
-**/
+volumeTrack = {
+	visible: false//alt + v
+}
 speedTrack = {
-	visible: false,//ctrl + t
+	visible: false,//alt + t
 	color: 'rgb(255,0,0)',
-	scaleY: -2,
 	draw: function (ctxt){
 		if(!speedTrack.visible) return 0;
 		var evts = recorder.speed;
@@ -830,7 +871,7 @@ speedTrack = {
 			if(evts[i].t > view.max) break;
 			var X1 = (evts[i].t-view.min)*view.k;
 			var X2 = (i+1 == evts.length)? (view.max-view.min)*view.k :(evts[i+1].t-view.min)*view.k;
-			var Y = 60000/evts[i].v*speedTrack.scaleY;
+			var Y = 60000/evts[i].v*eventBar.scaleY["speed"];
 			ctxt.fillStyle = "rgba"+ii.substring(3,ii.length-1)+",0.3)";
 			ctxt.fillRect(X1,view.height,X2-X1,Y);		
 			var s = speedTrack.select;
@@ -953,12 +994,27 @@ select = {
 		$(LAN.edit).className = (newselectedArr.length)?"blueOn":"blueOff";
 		select.selectedArr = newselectedArr;
 		select.rect = null;
+		if(select.selectedArr.length){
+			recorder.isWait = true;
+			recorder.offset = Math.round(new Date().getTime() - view.p);
+			recorder.isQuantify = false;
+		}
 		view.draw();
 	},
 	all: function (){
-		select.selectedArr = recorder.ctxt.slice(0);
-		$(LAN.edit).className = (recorder.ctxt.length)?"blueOn":"blueOff";
+		var c = recorder.ctxt;
+		select.selectedArr = [];
+		for(var n of c){
+			if(MIDI.channels[n.c].view && !MIDI.channels[n.c].lock)
+				select.selectedArr.push(n);
+		}
+		$(LAN.edit).className = (select.selectedArr.length)?"blueOn":"blueOff";
 		view.draw();
+		if(select.selectedArr.length){
+			recorder.isWait = true;
+			recorder.offset = Math.round(new Date().getTime() - view.p);
+			recorder.isQuantify = false;
+		}
 	},
 	del: function (){
 		var s = recorder.ctxt;
@@ -1054,11 +1110,12 @@ select = {
 
 grid = {
 	enable: false,
+	visible: true,
 	gap: 500,//gap = 60/x*1000 = 一大格的毫秒数, x is bpm
 	detail: 1, //can be 1\2\3\4\6\8
 	INdelay: 100,//threshod for "the sametime", for input chord
 	draw: function (ctxt){
-		if(!grid.enable) return 0;
+		if(!grid.visible) return 0;
 		if(view.max-view.min>100000) return 0;
 		ctxt.lineWidth = 1;
 		ctxt.strokeStyle = "#AA6";
@@ -1119,6 +1176,7 @@ grid = {
 				}
 				view.moveP(nt);
 				recorder.isWait = true;
+				recorder.isQuantify = false;
 				view.draw();
 			}, grid.INdelay);
 			if(note == 0 && speedTrack.visible){
@@ -1218,6 +1276,7 @@ addEvent = {
 					if(grid.enable) view.setP(grid.nearest(view.p));
 					view.draw();
 					recorder.isWait = true;
+					recorder.isQuantify = false;
 				}
 			}else if(evt.button == 0){
 				view.ismove = true;
@@ -1265,7 +1324,7 @@ addEvent = {
 					//不选中音符时，按Alt拖动选择控制点
 					speedTrack.select[1] = Pos.x/view.k+view.min;
 					view.draw();
-				}else if(evt.buttons==1 && IN.on[18]){//alt+左键：缩放时值
+				}else if((evt.buttons==1 ||evt.buttons==2) && IN.on[18]){//alt+左右键：缩放时值
 					var gap = Pos.x/view.k+view.min - view.oldP;
 					select.selectedArr.forEach(function (e){
 						e.d = e.d || 0;
@@ -1292,7 +1351,6 @@ addEvent = {
 					view.oldP = Pos.x/view.k+view.min;
 					view.draw();
 				}
-				
 			}
 		});
 		if(!Math.sign) Math.sign = function (x) { return typeof x === 'number' ? x ? x < 0 ? -1 : 1 : x === x ? 0 : NaN : NaN;}
@@ -1322,10 +1380,11 @@ addEvent = {
 			IN.on[ev.keyCode] = true;
 			var pressnote = null;//record note lig si synchronized con presstr //"\t";//0x08 initial empty note
 
+			if(IN.on[27])recorder.stop();// press Esc to stop
 			if(IN.on[17] && IN.on[191] && grid.enable){// press Ctrl+/? for prev grid
-				
 				view.moveP(grid.prev());
 				recorder.isWait = true;
+				recorder.isQuantify = false;
 				view.draw();
 			}
 			if(ev.keyCode == 191||ev.keyCode == 190||ev.keyCode == 20){
@@ -1356,6 +1415,9 @@ addEvent = {
 					break;
 					case 86://V
 						select.paste();
+					break;
+					case 66://Enter
+						recorder.goBack();
 					break;
 					case 219://[
 						select.scale(0.5);
@@ -1392,11 +1454,18 @@ addEvent = {
 					break;
 				}
 				note = null;
+			}else if(IN.on[18] && ev.keyCode == 82){// alt + R
+				recorder.recordQuantify();
 			}else if(IN.on[18] && ev.keyCode == 84){// alt + T
+				volumeTrack.visible = false;
 				speedTrack.toggle();
 			}else if(IN.on[18] && ev.keyCode == 68){// alt + W
 				IN.keysig -= 6;
 				panel.refresh();
+				view.draw();
+			}else if(IN.on[18] && ev.keyCode == 86){// alt + V
+				speedTrack.visible = false;
+				volumeTrack.visible = !volumeTrack.visible;
 				view.draw();
 			}else if(IN.on[18] && ev.keyCode == 69){// alt + E
 				IN.keysig += 6;
@@ -1470,8 +1539,15 @@ addEvent = {
 				IN.keepfirsttemp = false;
 				if(!(IN.on[32]||IN.on[192]))IN.tempsig = 0;
 				//remove effect of space tempdig
-				if(grid.enable){
+				if(grid.enable && !recorder.isQuantify){
 					grid.IN(note);
+				}else if(recorder.isQuantify && !(recorder.isRecord === false)){
+					pressnote = recorder.record(IN.channel, note, PLAYER.autoVolume(note));
+					var Q = recorder.ms2q(pressnote.t);
+					pressnote.t = recorder.q2ms(Math.round(Q*grid.detail)/grid.detail);
+					if(grid.enable){
+						pressnote.d = recorder.q2ms((Math.round(Q*grid.detail)+1)/grid.detail)-pressnote.t;
+					}
 				}else if(!(recorder.isRecord === false)){
 					pressnote = recorder.record(IN.channel, note, PLAYER.autoVolume(note));
 				}
@@ -1495,9 +1571,12 @@ addEvent = {
 				if(!MIDI.channels[IN.channel].sustain){
 					MIDI.noteOff(IN.channel,n.n);
 				}
-				n.d = new Date().getTime() - n.t - recorder.offset;
-				view.draw();
-				MIDI.channels[IN.channel].onNote[n.n] = false;
+				if(!(recorder.isQuantify && !(recorder.isRecord === false) && grid.enable)){
+					n.d = new Date().getTime() - n.t - recorder.offset;
+					view.draw();
+				}
+					MIDI.channels[IN.channel].onNote[n.n] = false;
+				
 			}
 			IN.pressnote[ev.keyCode] = false;
 			IN.on[ev.keyCode] = false;
@@ -1526,10 +1605,12 @@ langue = {
 		this.tempo = "FF";
 		this.sus = "SUS";
 		this.channel = "Channel";
+		this.record = "RIE";
 	},
 	zh: function(){
 		this.play = "&#x25b6;";
 		this.stop = "&#x2586;";
+		this.record = "&#x25CF;";
 		this.save = "保存";
 		this.edit = "编辑";
 		this.open = "加载";
@@ -1544,6 +1625,7 @@ langue = {
 	en: function(){
 		this.play = "&#x25b6;";
 		this.stop = "&#x2586;";
+		this.record = "&#x25CF;";
 		this.save = "Save";
 		this.edit = "Edit";
 		this.open = "Load";
@@ -1561,18 +1643,10 @@ LAN = new langue.zh();
 panel = {
 	buttons: [
 		{name:LAN.play, className:"blue", action: recorder.play},
+		{name:LAN.record, className:"blue", action: recorder.recordQuantify},
 		{name:LAN.stop, className:"blue", action: recorder.stop},
 		{name:LAN.edit, className:"blueOff", action: "disabled"},
-		{name:"|<", className:"blue", action: function (){
-			if(!recorder.ctxt.length) {
-				view.moveP(0);
-				recorder.isWait = true;
-				return 0;
-			}
-			recorder.sort();
-			view.moveP(recorder.ctxt[0].t);
-			recorder.isWait = true;
-		}},
+		{name:"|<", className:"blue", action: recorder.goBack},
 		{name:">|", className:"blue", action: function (){view.moveP(recorder.ctxt[recorder.ctxt.length-1].t)}},
 		{name:"Keysig", className:"dis", action: "disabled"},
 		{name:"strSharp", className:"dis", action: "disabled"},
@@ -1607,6 +1681,7 @@ panel = {
 			grid.set(!grid.enable);
 			if(grid.enable){
 				recorder.isWait = true;
+				recorder.isQuantify = false;
 				view.setP(grid.nearest(view.p));
 			}
 			view.draw();
@@ -1657,7 +1732,7 @@ panel = {
 		var BTN = document.createElement("BUTTON");
 		var BROWSE = document.createElement("INPUT");
 		BROWSE.type = "file";
-		BROWSE.accept = ".midi";
+		BROWSE.accept = ".midi,.mid";
 		BTN.innerHTML = LAN.open;
 		panel.btnJe = BTN;
 		panel.input_browse = BROWSE;

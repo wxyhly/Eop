@@ -162,6 +162,7 @@ ImpMidi.nextInt16 = function(){
 ImpMidi.noteOn = 0x90;
 ImpMidi.noteOff = 0x80;
 ImpMidi.sustain = 64;
+ImpMidi.volume = 7;
 ImpMidi.changeInstrument = 0xC0;
 ImpMidi.speed = 0x51;
 ImpMidi.timeSig = 0x58;
@@ -209,6 +210,12 @@ ImpMidi.loadToCtxt = function(out){
 				recorder.channels[out.tracks[i].index].sustain.push({
 					t: ImpMidi.getDuration(0,e.t),
 					v: e.v == 0 ? false : true
+				});
+			}
+			if(ImpMidi.is(e) == ImpMidi.volume){
+				recorder.channels[out.tracks[i].index].volume.push({
+					t: ImpMidi.getDuration(0,e.t),
+					v: e.v
 				});
 			}
 		}
@@ -297,6 +304,9 @@ ImpMidi.is = function(e){
 	}
 	if(e.e >> 4 == 0xB && e.n == 64){
 		return ImpMidi.sustain;
+	}
+	if(e.e >> 4 == 0xB && e.n == 7){
+		return ImpMidi.volume;
 	}
 	if(e.e >> 4 == 0xC){
 		return ImpMidi.changeInstrument;

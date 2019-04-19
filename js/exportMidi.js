@@ -12,14 +12,16 @@ ExpMidi.writeEvent = function(open, noteObj) {
 		open.push(0x51, 3, (noteObj.v)>>16, ((noteObj.v)>>8)&0xFF, (noteObj.v)&0xFF);
 	}else if(noteObj.n && noteObj.v >= 0){
 		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
-		console.log(noteObj.dt);
 		ExpMidi.changeState(open,ExpMidi.noteOn);
 		open.push(noteObj.n, Math.round(noteObj.v));
 	}else if(noteObj.e=="sustain"){
-		console.log(noteObj.dt);
 		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
 		ExpMidi.changeState(open,ExpMidi.cc);
 		open.push(64, noteObj.v);
+	}else if(noteObj.e=="volume"){
+		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
+		ExpMidi.changeState(open,ExpMidi.cc);
+		open.push(7, noteObj.v);
 	}
 	return open;
 }
@@ -78,6 +80,11 @@ ExpMidi.generate = function() {
 		for(var e of ce){
 			if(!nnctxt[ct.c])nnctxt[ct.c] = [];
 			nnctxt[i].push({t:e.t,v:e.v?127:0,e:"sustain"});
+		}
+		var ce = recorder.channels[i].volume;
+		for(var e of ce){
+			if(!nnctxt[ct.c])nnctxt[ct.c] = [];
+			nnctxt[i].push({t:e.t,v:e.v,e:"volume"});
 		}
 	}
 	for(var i in nnctxt){
