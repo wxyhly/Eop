@@ -5,6 +5,9 @@ ExpMidi.changeState = function(open,state){
 		ExpMidi.state = state;
 	}
 }
+ExpMidi.isPercussion = function(c){
+	return MIDI.channels[c].soundfontConfig.instrumentId === 0;
+}
 ExpMidi.writeEvent = function(open, noteObj) {
 	if(noteObj.e=="speed"){
 		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
@@ -12,7 +15,10 @@ ExpMidi.writeEvent = function(open, noteObj) {
 		open.push(0x51, 3, (noteObj.v)>>16, ((noteObj.v)>>8)&0xFF, (noteObj.v)&0xFF);
 	}else if(noteObj.n && noteObj.v >= 0){
 		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
-		ExpMidi.changeState(open,ExpMidi.noteOn);
+		if(ExpMidi.isPercussion(noteObj.c))
+			ExpMidi.changeState(open,ExpMidi.noteOn10);
+		else
+			ExpMidi.changeState(open,ExpMidi.noteOn);
 		open.push(noteObj.n, Math.round(noteObj.v));
 	}else if(noteObj.e=="sustain"){
 		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
@@ -26,6 +32,7 @@ ExpMidi.writeEvent = function(open, noteObj) {
 	return open;
 }
 ExpMidi.noteOn = 0x90;
+ExpMidi.noteOn10 = 0x99;
 ExpMidi.cc = 0xB0;
 ExpMidi.diff = function (events){
 	events.sort(function(a,b){return a.t - b.t});
@@ -78,12 +85,12 @@ ExpMidi.generate = function() {
 	for(var i in recorder.channels){
 		var ce = recorder.channels[i].sustain;
 		for(var e of ce){
-			if(!nnctxt[ct.c])nnctxt[ct.c] = [];
+			if(!nnctxt[i])nnctxt[i] = [];
 			nnctxt[i].push({t:e.t,v:e.v?127:0,e:"sustain"});
 		}
 		var ce = recorder.channels[i].volume;
 		for(var e of ce){
-			if(!nnctxt[ct.c])nnctxt[ct.c] = [];
+			if(!nnctxt[i])nnctxt[i] = [];
 			nnctxt[i].push({t:e.t,v:e.v,e:"volume"});
 		}
 	}
@@ -140,7 +147,7 @@ ExpMidi.generate = function() {
 	for(var nc of nnctxt){
 		ExpMidi.state = null;
 		if(!nc || !nc.length) continue;
-		var varydata = [];//[0x00,0xC0,nc.instrumentId];
+		var varydata = nc.instrumentId?[0x00,0xC0,nc.instrumentId]:[];
 		for(var i=0; i<nc.length; i++){
 			varydata = ExpMidi.writeEvent(varydata, nc[i]);
 		}

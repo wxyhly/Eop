@@ -97,6 +97,7 @@ ImpMidi.nextEvent = function(tr){
 		case 0xB:
 			e.n = ImpMidi.next();//音符、cc号
 			e.v = ImpMidi.next();//力度、cc值
+			e.c = e.e & 0xF;
 		break;
 		case 0xC:
 		case 0xD:
@@ -169,9 +170,11 @@ ImpMidi.timeSig = 0x58;
 ImpMidi.keySig = 0x59;
 ImpMidi.getSF = function(instrument){
 	var config = SoundfontConfigs["piano"];//par default
+	if(0==instrument) config = SoundfontConfigs["percussion"];
 	if(1<=instrument && instrument<=8) config = SoundfontConfigs["piano"];
 	if(41<=instrument && instrument<=48) config = SoundfontConfigs["cello"];
 	if(25<=instrument && instrument<=32) config = SoundfontConfigs["guitar"];
+	if(33<=instrument && instrument<=36) config = SoundfontConfigs["bass"];
 	return config;
 }
 ImpMidi.loadToCtxt = function(out){
@@ -198,6 +201,10 @@ ImpMidi.loadToCtxt = function(out){
 	for(var i in out.tracks){
 		for(var e of out.tracks[i]){
 			if(ImpMidi.is(e) == ImpMidi.noteOn){//一定非空
+				if(out.tracks[i].instrument !== 0 && e.c == 9){
+					out.tracks[i].instrument = 0;
+					panel.addSoundFont(ImpMidi.getSF(out.tracks[i].instrument),out.tracks[i].index);
+				}
 				recorder.ctxt.push({
 					c: out.tracks[i].index,
 					d: e.d ? ImpMidi.getDuration(e.t, e.t + e.d) : 0,

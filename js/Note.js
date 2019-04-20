@@ -347,6 +347,7 @@ recorder = {
 	startSusTime: null,
 	offset: new Date().getTime(),
 	playbackSpeed: 1,
+	nowQuantifyNote:[], //记录节拍器响时哪些音刚弹下，这些音不再在录制模式下播放
 	record: function (channel, note, volume,d){
 		var time = new Date().getTime();
 		if(recorder.isWait) recorder.offset = Math.round(time - view.p);
@@ -373,6 +374,7 @@ recorder = {
 				if(recorder.isPlaying <= 0){
 					recorder.isWait = true;
 					recorder.isQuantify = false;
+					recorder.nowQuantifyNote = [];
 				}
 			});
 			//move View Pointer:
@@ -424,6 +426,7 @@ recorder = {
 		//stop futur
 		recorder.isPlaying = 0;
 		recorder.isQuantify = false;
+		recorder.nowQuantifyNote = [];
 		for(var i = 0; i < 500000; i++){
 			clearTimeout(i);
 		}
@@ -436,6 +439,7 @@ recorder = {
 	goBack: function (){
 		recorder.isWait = true;
 		recorder.isQuantify = false;
+		recorder.nowQuantifyNote = [];
 		if(!recorder.ctxt.length) {
 			view.moveP(0);
 			return 0;
@@ -622,11 +626,14 @@ recorder = {
 				var dt = Math.round((stor[i].t - time));
 				if (stor[i].t >= nextTime-0.01) continue;//希望不漏播t=0处的声音
 				if (dt < -0.01) continue;//希望不漏播t=0处的声音
+				//console.log("index:"+recorder.nowQuantifyNote.indexOf(stor[i]));
+				if (recorder.nowQuantifyNote.indexOf(stor[i]) != -1) {continue;}//不播刚录下的声音
 				PLAYER.play(stor[i].c, stor[i].n, stor[i].v, dt, stor[i].d);
 			}
 			
 			
 			setTimeout(loop.bind(null,nextTime),nextTime-time);//节拍器
+			//recorder.nowQuantifyNote = [];
 		}
 		loop(view.p);//对齐大拍子
 	}
@@ -1019,6 +1026,7 @@ select = {
 			recorder.isWait = true;
 			recorder.offset = Math.round(new Date().getTime() - view.p);
 			recorder.isQuantify = false;
+			recorder.nowQuantifyNote = [];
 		}
 		view.draw();
 	},
@@ -1035,6 +1043,7 @@ select = {
 			recorder.isWait = true;
 			recorder.offset = Math.round(new Date().getTime() - view.p);
 			recorder.isQuantify = false;
+			recorder.nowQuantifyNote = [];
 		}
 	},
 	del: function (){
@@ -1198,6 +1207,7 @@ grid = {
 				view.moveP(nt);
 				recorder.isWait = true;
 				recorder.isQuantify = false;
+				recorder.nowQuantifyNote = [];
 				view.draw();
 			}, grid.INdelay);
 			if(note == 0 && speedTrack.visible){
@@ -1298,6 +1308,7 @@ addEvent = {
 					view.draw();
 					recorder.isWait = true;
 					recorder.isQuantify = false;
+					recorder.nowQuantifyNote = [];
 				}
 			}else if(evt.button == 0){
 				view.ismove = true;
@@ -1406,6 +1417,7 @@ addEvent = {
 				view.moveP(grid.prev());
 				recorder.isWait = true;
 				recorder.isQuantify = false;
+				recorder.nowQuantifyNote = [];
 				view.draw();
 			}
 			if(ev.keyCode == 191||ev.keyCode == 190||ev.keyCode == 20){
@@ -1566,6 +1578,8 @@ addEvent = {
 					pressnote = recorder.record(IN.channel, note, PLAYER.autoVolume(note));
 					var Q = recorder.ms2q(pressnote.t);
 					pressnote.t = recorder.q2ms(Math.round(Q*grid.detail)/grid.detail);
+					recorder.nowQuantifyNote.push(pressnote);
+					//console.log ("length:"+recorder.nowQuantifyNote.length);
 					if(grid.enable){
 						pressnote.d = recorder.q2ms((Math.round(Q*grid.detail)+1)/grid.detail)-pressnote.t;
 					}
@@ -1703,6 +1717,7 @@ panel = {
 			if(grid.enable){
 				recorder.isWait = true;
 				recorder.isQuantify = false;
+				recorder.nowQuantifyNote = [];
 				view.setP(grid.nearest(view.p));
 			}
 			view.draw();
@@ -1862,7 +1877,7 @@ panel = {
 		MIDI.loadSoundFont(sf,function (){
 			$("ChannelProgress").innerHTML = '';
 		},id);
-		IN.channel = 0;
+		if(!MIDI.channels[IN.channel]) IN.channel = 0;
 		panel.refreshChannelPanel();
 	}
 }
