@@ -832,6 +832,15 @@ eventBar = {
 		eventBar.sort(evts);
 		var ctxt = view.ctxt;
 		var ii = eventBar.color[name];
+		if(name=="volume" && !(evts.length && evts[0].t == 0)){
+			//initial value
+			var X1 = 0;
+			var X2 = (!evts.length)? (view.max-view.min)*view.k :(evts[0].t-view.min)*view.k;
+			var Y = MIDI.cc_default["volume"]*eventBar.scaleY[name];
+			Y *= view.nk;
+			ctxt.fillStyle = "rgba"+ii.substring(3,ii.length-1)+",0.3)";
+			ctxt.fillRect(X1,view.height,X2-X1,Y);
+		}
 		for(var i in evts){
 			i = Number(i);
 			if(i+1 < evts.length && evts[i+1].t < view.min) continue;
@@ -844,6 +853,18 @@ eventBar = {
 			ctxt.fillRect(X1,view.height,X2-X1,Y);		
 			ctxt.fillStyle = ii;
 			ctxt.fillRect(X1,view.height+Y-2,3,3);
+		}
+		if(name=="volume"){
+			var Y1 =  100*eventBar.scaleY[name]*view.nk;
+			var Y2 =  127*eventBar.scaleY[name]*view.nk;
+			ctxt.lineWidth = 2;
+			ctxt.strokeStyle = "#6F6";
+			ctxt.beginPath();
+			//ctxt.moveTo(0,view.height+Y1);
+			//ctxt.lineTo(view.width,view.height+Y1);
+			ctxt.moveTo(0,view.height+Y2);
+			ctxt.lineTo(view.width,view.height+Y2);
+			ctxt.stroke();
 		}
 	},
 	sort: function(evts){
@@ -907,7 +928,7 @@ speedTrack = {
 	toAppend: function(Pos){
 		var X = Pos.x/view.k+view.min;
 		if(grid.enable) X = grid.nearest(X);
-		var Y = 60000/(Pos.y - view.height)*speedTrack.scaleY;
+		var Y = 60000/(Pos.y - view.height)*eventBar.scaleY["speed"];
 		speedTrack.toAppendPoint.t = X<0?0:X;
 		speedTrack.toAppendPoint.q = recorder.ms2q(X<0?0:X);
 		speedTrack.toAppendPoint.v = Y;
