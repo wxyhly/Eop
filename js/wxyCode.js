@@ -145,7 +145,12 @@ xcode.de = function (txt){
 	var del;
 	var g = 0;
 	grid.set(false);
+	recorder.clear();
+	var id = 0;
+	var channel = MIDI.channels[id] = new Channel(MIDI.context, SoundfontConfigs["piano"]);
+	recorder.initChannel(id,channel);
 	txt = vel[0];
+	recorder.speed = [{t:0, v:500}]
 	if(bpm.length>1){
 		grid.set(true);
 		txt = bpm[1];

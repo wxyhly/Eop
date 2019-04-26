@@ -109,7 +109,7 @@ div.channel {
 	left: 40%;
 	top: 100px;
 	padding: 5px;
-	width: 400px;
+	//width: 400px;
 	z-index:6;
 	background-color: #DFD;
 	opacity: 0.8;

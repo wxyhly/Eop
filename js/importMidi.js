@@ -173,16 +173,15 @@ ImpMidi.getSF = function(instrument){
 	if(0==instrument) config = SoundfontConfigs["percussion"];
 	if(1<=instrument && instrument<=8) config = SoundfontConfigs["piano"];
 	if(41<=instrument && instrument<=48) config = SoundfontConfigs["cello"];
-	if(25<=instrument && instrument<=32) config = SoundfontConfigs["guitar"];
+	if(25<=instrument && instrument<=26) config = SoundfontConfigs["guitar"];
+	if(27<=instrument && instrument<=32) config = SoundfontConfigs["electric guitar"];
 	if(33<=instrument && instrument<=36) config = SoundfontConfigs["bass"];
 	return config;
 }
 ImpMidi.loadToCtxt = function(out){
+	recorder.clear();
+	
 	var tracks = [];
-	recorder.ctxt = [];
-	recorder.channels = [];
-	MIDI.channels = [];
-	recorder.speed = [];
 	out.speed = [];
 	out.timeSig = [];
 	var index = 0;

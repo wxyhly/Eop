@@ -49,7 +49,7 @@ MIDI = {
 		xmlhttp.send();
 	},
 	loadSoundFont : function(config,onsuccess,id){
-		id = id || (id === 0? 0: MIDI.trackBuffers.length);
+		id = id || (id === 0? 0: MIDI.channels.length);
 		MIDI.trackBuffers[id] = [];
 		var channel = MIDI.channels[id] = new Channel(MIDI.context, config);
 		if(!recorder.channels[id]) recorder.initChannel(id,channel);//防重写cc
@@ -57,19 +57,18 @@ MIDI = {
 		config.loaded = {success: false, audioBuffers:[], playbackSettings: []}
 		var ab = config.loaded.audioBuffers;
 		var pbs = config.loaded.playbackSettings;
-		if(config.notes == "b"){//生成代表从A0-C8全有，用降号命名的数组
-			config.notes = [];
-			for (var n = A0; n <= C8; n++) {
-				var octave = (n - 12) / 12 >> 0;
-				var namef = number2keyf[n % 12] + octave;
-				config.notes.push(namef);
+		
+		if(config.settings.sustain){
+			for(var i in config.settings.sustain){
+				var noteName = config.settings.sustain[i];
+				var note = MIDI.keySToNote[noteName] || MIDI.keyFToNote[noteName];
+				config.settings.sustain[i] = note;
 			}
-		}else if(config.notes == "s"){//生成代表从A0-C8全有，用升号命名的数组
-			for (var n = A0; n <= C8; n++) {
-				var octave = (n - 12) / 12 >> 0;
-				var namef = number2keys[n % 12] + octave;
-				config.notes.push(namef);
-			}
+		}
+		if(config.settings.releaseSound){
+			var noteName = config.settings.releaseSound;
+			var note = MIDI.keySToNote[noteName] || MIDI.keyFToNote[noteName];
+			config.settings.releaseSound = note;
 		}
 		var total = config.notes.length;
 		var d_loaded = c_loaded = 0;
@@ -122,8 +121,9 @@ MIDI = {
 		var context = MIDI.context;
 		var source = context.createBufferSource();
 		source.buffer = buf;
-		if(tB[note]){//若这个音符本来正在播放，切断它
-			MIDI.noteOff(channel, note, MIDI.channels[channel].releaseSpeed,true);//true:忽略sustain强制关断
+		
+		if(tB[note] && MIDI.channels[channel].soundfontConfig.settings.releaseSound != note){//若这个音符本来正在播放，切断它
+			MIDI.noteOff(channel, note, true);//true:忽略sustain强制关断
 		}
 		tB[note] = source;
 		var gainNode = context.createGain();
@@ -139,13 +139,17 @@ MIDI = {
 	noteOff : function(channel, note, hard) {//hard: 忽略sustain强制关断
 		
 		if(MIDI.channels[channel].sustain && !hard) return 0;
+		if(MIDI.channels[channel].soundfontConfig.settings.sustain && MIDI.channels[channel].soundfontConfig.settings.sustain.indexOf(note)!=-1) return 0;
 		var pb = MIDI.trackBuffers[channel][note];
 		if(!pb) return 0;
 		var tB = MIDI.trackBuffers[channel];
 		var bufferSource = tB[note];
-		var releaseSpeed = MIDI.channels[channel].releaseSpeed;
+		var releaseSpeed = MIDI.channels[channel].soundfontConfig.settings.releaseSpeed;
 		//console.log("off:"+channel+"-"+note);
 		if(bufferSource) {
+			if(MIDI.channels[channel].soundfontConfig.settings.releaseSound && !hard){
+				MIDI.noteOn(channel,MIDI.channels[channel].soundfontConfig.settings.releaseSound,10);
+			}
 			if(!releaseSpeed){
 				bufferSource.stop(0);
 				return 0;
@@ -197,7 +201,6 @@ Channel = function(context, sfConfig){
 	this.gainNode = context.createGain();
 	this.gainNode.connect(MIDI.masterGain);
 	this.sustain = false;
-	this.releaseSpeed = 0.015;
 	//for channel panel controller:
 	this.view = true;
 	this.sound = true;
@@ -264,7 +267,7 @@ IN = {
 	channel : 0,//current channel(all newly inputs will in this channel)
 	setChannel :function(c){
 		IN.channel = c;
-		$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
+		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 	},
 	enable: true,
 	sustain: true,  //sustain
@@ -287,6 +290,7 @@ IN = {
 	},
 	toggleSus: function (record){
 		MIDI.channels[IN.channel].sustain = !MIDI.channels[IN.channel].sustain;
+		
 		if(record){
 			recorder.recordEvent(IN.channel,"sustain",MIDI.channels[IN.channel].sustain);
 		}
@@ -304,7 +308,7 @@ IN = {
 				}
 			}
 		}
-		$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
+		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 		view.draw();
 	},
 
@@ -348,6 +352,15 @@ recorder = {
 	offset: new Date().getTime(),
 	playbackSpeed: 1,
 	nowQuantifyNote:[], //记录节拍器响时哪些音刚弹下，这些音不再在录制模式下播放
+	clear: function(){
+		recorder.stop();
+		recorder.ctxt = [];
+		recorder.channels = [];
+		MIDI.channels = [];
+		recorder.speed = [];
+		panel.set(null);//close all the windows
+		view.p = 0;
+	},
 	record: function (channel, note, volume,d){
 		var time = new Date().getTime();
 		if(recorder.isWait) recorder.offset = Math.round(time - view.p);
@@ -396,7 +409,6 @@ recorder = {
 						case "sustain":
 							cb = function (k,target,i){
 								target.sustain = k.v;
-								$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 								view.moveP(k.t);
 								if(!k.v){
 									for(var n=A0;n<=C8;n++){
@@ -636,6 +648,26 @@ recorder = {
 			//recorder.nowQuantifyNote = [];
 		}
 		loop(view.p);//对齐大拍子
+	},
+	deleteChannel: function(channel){
+		if(recorder.channels.length<=1)return 0;
+		var c = recorder.ctxt;
+		for(var i=0; i < c.length; i++){
+			if(c[i].c == channel){
+				c.splice(i,1);
+				i--;
+			}
+		}
+		for(var i=0; i < c.length; i++){
+			if(c[i].c > channel){
+				c[i].c--;
+			}
+		}
+		recorder.channels.splice(channel,1);
+		MIDI.channels.splice(channel,1);
+		if(!MIDI.channels[IN.channel]) IN.channel = 0;
+		panel.refreshChannelPanel();
+		view.draw();
 	}
 }
 
@@ -679,7 +711,7 @@ view = {
 		view.p = view_p;
 		MIDI.channels[IN.channel].gainNode.gain.value = recorder.getEventAt(IN.channel,"volume",view_p)/100;
 		MIDI.channels[IN.channel].sustain = recorder.getEventAt(IN.channel,"sustain",view_p);
-		$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
+		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 	},
 	draw: function (){
 		var storage = recorder.ctxt;
@@ -712,10 +744,11 @@ view = {
 		ctxt.font="20px Arial";
 		for(var i = 0; i < storage.length; i++){
 			var d = storage[i].d || 0;
+			var opacite = storage[i].c == IN.channel ? 1:0.8;
 			if (storage[i].t + d < view.min || storage[i].t > view.max) continue;
 			var selected = select.test(storage[i]);
 			if (!MIDI.channels[storage[i].c].view) continue; //this channel is not visible
-			ctxt.fillStyle = velocity.getBoxColor(selected,storage[i].v);
+			ctxt.fillStyle = velocity.getBoxColor(selected,storage[i].v,opacite);
 			var X = (storage[i].t-view.min)*view.k;
 			var Y = (storage[i].n-view.nmax)*view.nk;
 			var dx = (storage[i].d) ? storage[i].d*view.k : undefined;
@@ -724,14 +757,13 @@ view = {
 				if(select.selectedArr.length){//draw velocity bar
 					var X = (storage[i].t-view.min)*view.k;
 					if(!selected){
-						var ii = velocity.getBoxColor(false,storage[i].v);
-						ctxt.fillStyle = "rgba"+ii.substring(3,ii.length-1)+",0.3)";
+						var ii = velocity.getBoxColor(false,storage[i].v,opacite*0.5);
 					}else{
-						ctxt.fillStyle = velocity.getBoxColor(false,storage[i].v);
+						ctxt.fillStyle = velocity.getBoxColor(false,storage[i].v,opacite);
 					}
 					ctxt.fillRect(X, view.height, selected?view.dx/3:view.dx/4, -storage[i].v);
 				}
-				ctxt.fillStyle = velocity.getTextColor(selected,storage[i].v);
+				ctxt.fillStyle = velocity.getTextColor(selected,storage[i].v,opacite);
 				
 				ctxt.fillText(view.list[(storage[i].n - keysig) % 12],X-view.dx, Y);
 			}
@@ -769,13 +801,13 @@ view = {
 	}
 }
 velocity = {
-	getBoxColor: function (s,v){
-		var rgb = velocity._HSB_to_RGB(270-v*2, s?0.5:1, s?1:0.7);
-		return "rgb("+rgb.R+","+rgb.G+","+rgb.B+")";
+	getBoxColor: function (s,v,a){
+		var rgb = velocity._HSB_to_RGB(270-v*2, a>0.9?(s?0.7:1):0.15, s?1:0.7);
+		return "rgba("+rgb.R+","+rgb.G+","+rgb.B+","+1+")";
 	},
-	getTextColor: function (s,v){
+	getTextColor: function (s,v,a){
 		var rgb = velocity._HSB_to_RGB(270-v*2, 1, s?0.6:0.2);
-		return "rgb("+rgb.R+","+rgb.G+","+rgb.B+")";
+		return "rgba("+rgb.R+","+rgb.G+","+rgb.B+","+1+")";
 	},
 	_HSB_to_RGB: function(H, S, B) {
 		var rgb = {R:0, G:0, B:0};
@@ -817,6 +849,7 @@ eventBar = {
 	draw:function (channel, name){
 		var evts = recorder.channels[channel][name];
 		if(!volumeTrack.visible && name == "volume")return 0;
+		if(!sustainTrack.visible && name == "sustain")return 0;
 		if(select.sustain && select.sustain[0]!=select.sustain[1] && name == "sustain"){//鼠标正在拖动sustain
 			select.sustainEvt = [];
 			var value1 = recorder.getEventAt(channel,name,select.sustain[0]);
@@ -860,6 +893,11 @@ eventBar = {
 			ctxt.fillRect(X1,view.height,X2-X1,Y);		
 			ctxt.fillStyle = ii;
 			ctxt.fillRect(X1,view.height+Y-2,3,3);
+			var s = name=="volume"? volumeTrack.select : sustainTrack.select;
+				if(s && (s[0]<evts[i].t ^ s[1]<evts[i].t)){
+					ctxt.fillStyle = "rgb(0,0,155)";
+					ctxt.fillRect(X1,view.height+Y-2,5,5);
+				}
 		}
 		if(name=="volume"){
 			var Y1 =  100*eventBar.scaleY[name]*view.nk;
@@ -883,8 +921,92 @@ eventBar = {
 		});
 	}
 }
+
+sustainTrack = {
+	visible: false,//alt + s
+	toggle: function(){
+		speedTrack.visible = false;
+		volumeTrack.visible = false;
+		sustainTrack.visible = !sustainTrack.visible;
+		view.draw();
+		panel.refreshCC();
+	},
+	select:null,//[start,end]
+	finiSelect: function(){
+		var s = sustainTrack.select;
+		var v = recorder.channels[IN.channel].sustain;
+		for(var i=0; i < v.length; i++){
+			if(s && (s[0]<v[i].t ^ s[1]<v[i].t)){
+				v.splice(i,1);
+				i--;
+			}
+		}
+		sustainTrack.update(v);
+		sustainTrack.select = null;
+	},
+	update: function(rc){
+		eventBar.sort(rc);
+		for(var i=0; i < rc.length; i++){
+			var r = rc[i];
+			if(i>0 && r.v == rc[i-1].v){
+				rc.splice(i,1);
+				i--;
+				continue;
+			}
+			if(i<rc.length-1 && r.t == rc[i+1].t){
+				rc.splice(i,1);
+				i--;
+				continue;
+			}
+		}
+		if(rc.length && !rc[0].v)rc.shift();
+		MIDI.channels[IN.channel].sustain = recorder.getEventAt(IN.channel,"sustain",view.p);
+		view.draw();
+	}
+}
 volumeTrack = {
-	visible: false//alt + v
+	visible: false,//alt + v
+	toggle: function(){
+		speedTrack.visible = false;
+		sustainTrack.visible = false;
+		volumeTrack.visible = !volumeTrack.visible;
+		view.draw();
+		panel.refreshCC();
+	},
+	select:null,//[start,end]
+	toAppendPoint: null,
+	finiSelect: function(){
+		var s = volumeTrack.select;
+		var v = recorder.channels[IN.channel].volume;
+		for(var i=0; i < v.length; i++){
+			if(s && (s[0]<v[i].t ^ s[1]<v[i].t)){
+				v.splice(i,1);
+				i--;
+			}
+		}
+		volumeTrack.select = null;
+	},
+	toAppend: function(Pos){
+		var X = Pos.x/view.k+view.min;
+		if(grid.enable) X = grid.nearest(X);
+		var Y = (Pos.y - view.height)/eventBar.scaleY["volume"]/view.nk;
+		volumeTrack.toAppendPoint.t = X<0?0:X;
+		volumeTrack.toAppendPoint.v = Math.round(Y)>127?127:Y;
+	},
+	append: function(){
+		var e = volumeTrack.toAppendPoint;
+		if(e.t<=0){
+			recorder.channels[IN.channel].volume[0] = e;
+			
+			return e;
+		}
+		recorder.channels[IN.channel].volume.push(e);
+		eventBar.sort(recorder.channels[IN.channel].volume);
+		return e;
+	},
+	changeAppend: function(){
+		eventBar.sort(recorder.channels[IN.channel].volume);
+	}
 }
 speedTrack = {
 	visible: false,//alt + t
@@ -914,13 +1036,15 @@ speedTrack = {
 		
 	},
 	toggle:function(){
+		volumeTrack.visible = false;
+		sustainTrack.visible = false;
 		speedTrack.visible = !speedTrack.visible;
 		view.draw();
+		panel.refreshCC();
 	},
 	select:null,//[start,end]
 	toAppendPoint: null,
 	finiSelect: function(){
-		var remover = [];
 		var s = speedTrack.select;
 		recorder.calculeQ();
 		for(var i=0; i < recorder.speed.length; i++){
@@ -948,7 +1072,7 @@ speedTrack = {
 			return e;
 		}
 		recorder.speed.push(e);
-		eventBar.sort(recorder.speed);
+		speedTrack.update(recorder.speed);
 		return e;
 	},
 	changeAppend: function(){
@@ -983,6 +1107,24 @@ speedTrack = {
 			view.moveP(grid.nearest(recorder.q2ms(nowQ)));
 		}
 		speedTrack.record_start = view.p;
+		speedTrack.update(recorder.speed);
+	},
+	update: function(rc){
+		eventBar.sort(rc);
+		for(var i=0; i < rc.length; i++){
+			var r = rc[i];
+			if(i>0 && r.v == rc[i-1].v){
+				rc.splice(i,1);
+				i--;
+				continue;
+			}
+			if(i<rc.length-1 && Math.abs(r.t - rc[i+1].t)<0.01){
+				rc.splice(i,1);
+				i--;
+				continue;
+			}
+		}
+		view.draw();
 	}
 }
 select = {
@@ -1012,6 +1154,15 @@ select = {
 			return false;
 		}
 		return select.testRect(n) ^ (select.selectedArr.indexOf(n) != -1);
+	},
+	selectOnly: function(){
+		var s = select.selectedArr;
+		var newSelect = [];
+		for(var i = 0; i < s.length; i++){
+			if(s[i].c == IN.channel) newSelect.push(s[i]);
+		}
+		select.selectedArr = newSelect;
+		view.draw();
 	},
 	fini: function (){
 		var s = recorder.ctxt;
@@ -1127,6 +1278,13 @@ select = {
 	},
 	redo:function(){
 		
+	},
+	moveLayer:function(){
+		var s = recorder.ctxt;
+		for(var i = 0; i < s.length; i++){
+			if(select.test(s[i])) s[i].c = IN.channel;
+		}
+		view.draw();
 	}
 }
 
@@ -1250,27 +1408,26 @@ addEvent = {
 			}else if(speedTrack.select && evt.button == 0 && speedTrack.visible){
 				speedTrack.finiSelect();
 			}
+			if(volumeTrack.toAppendPoint && IN.on[18] && volumeTrack.visible && evt.button == 2){
+				volumeTrack.toAppendPoint = null;		
+			}else if(volumeTrack.select && evt.button == 0 && volumeTrack.visible){
+				volumeTrack.finiSelect();
+			}
+			if((!select.sustain) && IN.on[18] && evt.button == 2 && sustainTrack.visible){
+				var rc = recorder.channels[IN.channel].sustain;
+				if(rc){
+					var T = view.oldP;
+					rc.push({t:Math.max(0,T),v:!recorder.getEventAt(IN.channel,"sustain",T)});
+					sustainTrack.update(rc);
+				}
+			}else if(sustainTrack.select && evt.button == 0 && sustainTrack.visible){
+				sustainTrack.finiSelect();
+			}
 			if(evt.button == 0) select.fini();
-			if(select.sustain){
+			if(select.sustain && select.sustainEvt){
 				select.sustain = null;
 				var rc = recorder.channels[IN.channel].sustain = select.sustainEvt;
-				eventBar.sort(rc);
-				for(var i=0; i < rc.length; i++){
-					var r = rc[i];
-					if(i>0 && r.v == rc[i-1].v){
-						rc.splice(i,1);
-						i--;
-						continue;
-					}
-					if(i<rc.length-1 && r.t == rc[i+1].t){
-						rc.splice(i,1);
-						i--;
-						continue;
-					}
-				}
-				if(!rc[0].v)rc.shift();
-				panel.refresh();
-				view.draw();
+				sustainTrack.update(rc);
 			}
 			if(IN.on[18] && grid.enable){
 				select.selectedArr.forEach(function (e){
@@ -1286,7 +1443,7 @@ addEvent = {
 			panel.set(null);//close all the windows
 			var Pos = p2p(obj,evt);
 			if(evt.button == 2){
-				if(!select.selectedArr.length && IN.on[18] && speedTrack.visible){
+				if(!select.selectedArr.length && IN.on[18] && speedTrack.visible){//CC speed
 					speedTrack.toAppendPoint = {};
 					eventBar.sort(recorder.speed);
 					recorder.calculeQ();
@@ -1297,8 +1454,18 @@ addEvent = {
 					view.ismove = true;
 					view.draw();
 				}
-				if(IN.on[16]||IN.on[17]||IN.on[18]){
-					//Ctrl+右键改sustain，shift+右键缩放音量，Alt+右键整体缩放音符
+				if(!select.selectedArr.length && IN.on[18] && volumeTrack.visible){//CC volume
+					volumeTrack.toAppendPoint = {};
+					eventBar.sort(recorder.channels[IN.channel].volume);
+					volumeTrack.toAppend(Pos);
+					volumeTrack.append();
+					volumeTrack.changeAppend();
+					
+					view.ismove = true;
+					view.draw();
+				}
+				if(IN.on[16]||IN.on[18]){
+					//shift+右键缩放音量，Alt+右键整体缩放音符
 					view.oldPy = Pos.y;
 					view.oldP = Pos.x/view.k+view.min;
 					view.ismove = true;
@@ -1312,9 +1479,17 @@ addEvent = {
 				}
 			}else if(evt.button == 0){
 				view.ismove = true;
+				//不选中音符时，按Alt拖动选择控制点:
 				if(!select.selectedArr.length && IN.on[18] && speedTrack.visible){
-					//不选中音符时，按Alt拖动选择控制点
 					speedTrack.select = [Pos.x/view.k+view.min, Pos.x/view.k+view.min];
+					return 0;
+				}
+				if(!select.selectedArr.length && IN.on[18] && volumeTrack.visible){
+					volumeTrack.select = [Pos.x/view.k+view.min, Pos.x/view.k+view.min];
+					return 0;
+				}
+				if(!select.selectedArr.length && IN.on[18] && sustainTrack.visible){
+					sustainTrack.select = [Pos.x/view.k+view.min, Pos.x/view.k+view.min];
 					return 0;
 				}
 				if(IN.on[16] || IN.on[18]){
@@ -1337,12 +1512,17 @@ addEvent = {
 		$(obj).addEventListener("mousemove", function (evt) { 
 			var Pos = p2p(obj,evt);
 			if(view.ismove){
-				if(evt.buttons == 2 && IN.on[17]){//Ctrl+右键：sustain
+				if(evt.buttons == 2 && IN.on[18] && sustainTrack.visible){//Alt+右键：sustain
 					select.sustain = [view.oldP, Pos.x/view.k+view.min];
 					view.draw();
-				}else if(speedTrack.toAppendPoint && IN.on[18] && speedTrack.visible && evt.buttons == 2){//Alt+右键：speed
+				}else if(speedTrack.toAppendPoint && IN.on[18] && speedTrack.visible && evt.buttons == 2){//CC speed:Alt+右键
 					speedTrack.toAppend(Pos);
 					speedTrack.changeAppend();
+					view.ismove = true;
+					view.draw();
+				}else if(volumeTrack.toAppendPoint && IN.on[18] && volumeTrack.visible && evt.buttons == 2){//CC volume:Alt+右键
+					volumeTrack.toAppend(Pos);
+					volumeTrack.changeAppend();
 					view.ismove = true;
 					view.draw();
 				}else if(evt.buttons == 2 && IN.on[16]){//shift+右键：力度缩放
@@ -1352,9 +1532,15 @@ addEvent = {
 					});
 					view.draw();
 					view.oldPy = Pos.y;
-				}else if(speedTrack.select && evt.buttons == 1 && speedTrack.visible){//Alt+左键：speed
-					//不选中音符时，按Alt拖动选择控制点
+				//不选中音符时，按Alt拖动选择控制点删除：
+				}else if(speedTrack.select && evt.buttons == 1 && speedTrack.visible){//CC speed:Alt+左键
 					speedTrack.select[1] = Pos.x/view.k+view.min;
+					view.draw();
+				}else if(volumeTrack.select && evt.buttons == 1 && volumeTrack.visible){//CC volume:Alt+左键
+					volumeTrack.select[1] = Pos.x/view.k+view.min;
+					view.draw();
+				}else if(sustainTrack.select && evt.buttons == 1 && sustainTrack.visible){//CC sustain:Alt+左键
+					sustainTrack.select[1] = Pos.x/view.k+view.min;
 					view.draw();
 				}else if((evt.buttons==1 ||evt.buttons==2) && IN.on[18]){//alt+左右键：缩放时值
 					var gap = Pos.x/view.k+view.min - view.oldP;
@@ -1446,8 +1632,21 @@ addEvent = {
 					case 67://C
 						select.copy();
 					break;
+					case 68://D
+						select.selectOnly();
+					break;
+					
+					case 83://S
+						ExpMidi.saveMIDIFile();
+					break;
+					case 79://O
+						panel.input_browse.click();
+					break;
 					case 86://V
 						select.paste();
+					break;
+					case 77://M
+						select.moveLayer();
 					break;
 					case 66://Enter
 						recorder.goBack();
@@ -1490,16 +1689,15 @@ addEvent = {
 			}else if(IN.on[18] && ev.keyCode == 82){// alt + R
 				recorder.recordQuantify();
 			}else if(IN.on[18] && ev.keyCode == 84){// alt + T
-				volumeTrack.visible = false;
 				speedTrack.toggle();
+			}else if(IN.on[18] && ev.keyCode == 83){// alt + S
+				sustainTrack.toggle();
 			}else if(IN.on[18] && ev.keyCode == 68){// alt + W
 				IN.keysig -= 6;
 				panel.refresh();
 				view.draw();
 			}else if(IN.on[18] && ev.keyCode == 86){// alt + V
-				speedTrack.visible = false;
-				volumeTrack.visible = !volumeTrack.visible;
-				view.draw();
+				volumeTrack.toggle();
 			}else if(IN.on[18] && ev.keyCode == 69){// alt + E
 				IN.keysig += 6;
 				panel.refresh();
@@ -1637,10 +1835,11 @@ langue = {
 		this.midi = "EQETO";
 		this.scale = "Scale";
 		this.grid = "GRD";
-		this.tempo = "FF";
+		this.speed = "FF";
 		this.sus = "SUS";
 		this.channel = "Channel";
 		this.record = "RIE";
+		this.volume = "volume";
 	},
 	zh: function(){
 		this.play = "&#x25b6;";
@@ -1652,10 +1851,11 @@ langue = {
 		this.close = "OK";
 		this.midi = "下载Midi";
 		this.scale = "缩放";
-		this.grid = "网格";
-		this.tempo = "速度";
+		this.grid = "对齐";
+		this.speed = "速度";
 		this.sus = "延音";
 		this.channel = "通道";
+		this.volume = "音量";
 	},
 	en: function(){
 		this.play = "&#x25b6;";
@@ -1666,9 +1866,10 @@ langue = {
 		this.open = "Load";
 		this.close = "OK";
 		this.midi = "Get Midi";
+		this.volume = "volume";
 		this.scale = "Scale";
 		this.grid = "Grid";
-		this.tempo = "Tempo";
+		this.speed = "Speed";
 		this.sus = "Sus";
 		this.channel = "Channel";
 	},
@@ -1680,21 +1881,34 @@ panel = {
 		{name:LAN.play, className:"blue", action: recorder.play},
 		{name:LAN.record, className:"blue", action: recorder.recordQuantify},
 		{name:LAN.stop, className:"blue", action: recorder.stop},
-		{name:LAN.edit, className:"blueOff", action: "disabled"},
 		{name:"|<", className:"blue", action: recorder.goBack},
 		{name:">|", className:"blue", action: function (){view.moveP(recorder.ctxt[recorder.ctxt.length-1].t)}},
+		{name:"volume", className:"blueOff", action: "disabled"},
+		{name:LAN.edit, className:"blueOff", action: "disabled"},
 		{name:"Keysig", className:"dis", action: "disabled"},
 		{name:"strSharp", className:"dis", action: "disabled"},
 		{name:"strFlat", className:"dis", action: "disabled"},
 		{name:"keyTemp", className:"keytemp", action: "disabled"},
-		{name:"EOP", className:"green", action: function (){
+		{name:"EOP", className:"white", action: function (){
 			IN.mode = (IN.mode=="eop")?"ki":"eop";
 			$("EOP").innerHTML = IN.mode.toUpperCase();
 		}},
-		{name:LAN.sus, className:"green", action: IN.toggleSus},
-		{name:"volume", className:"green", action: "disabled"},
 		{name:LAN.channel, className:"green", action: function(){
 			panel.set(LAN.channel);
+		}},
+		{name:LAN.sus, className:"green", action: sustainTrack.toggle},
+		{name:LAN.volume, className:"green", action: volumeTrack.toggle},
+		{name:LAN.speed, className:"yellow", action: speedTrack.toggle},
+		{name:LAN.grid, className:"yellow", action: function (){
+			grid.set(!grid.enable);
+			if(grid.enable){
+				recorder.isWait = true;
+				recorder.isQuantify = false;
+				recorder.nowQuantifyNote = [];
+				view.setP(grid.nearest(view.p));
+			}
+			view.draw();
+			
 		}},
 		{name:LAN.save, className:"red", action: function (){
 			recorder.sort();
@@ -1712,21 +1926,10 @@ panel = {
 			panel.set(LAN.open);
 			$("output").value = "";
 		}},
-		{name:LAN.grid, className:"yellow", action: function (){
-			grid.set(!grid.enable);
-			if(grid.enable){
-				recorder.isWait = true;
-				recorder.isQuantify = false;
-				recorder.nowQuantifyNote = [];
-				view.setP(grid.nearest(view.p));
-			}
-			view.draw();
-			
-		}},
-		{name:LAN.tempo, className:"yellow", action: function (){
+		/*{name:LAN.tempo, className:"yellow", action: function (){
 			panel.set(LAN.tempo);
-		}},
-		{name:"？", className:"white", action: function (){
+		}},*/
+		{name:"？", className:"red", action: function (){
 			panel.set("？");
 		}}
 	],
@@ -1837,7 +2040,7 @@ panel = {
 		$("strSharp").innerHTML = "<i>#</i>"+IN.strSharp;
 		$("strFlat").innerHTML = "<i>b</i>"+IN.strFlat;
 		$("keyTemp").innerHTML = IN.keySharp.length?("<i>#</i>"+IN.keySharp):(IN.keyFlat.length?("<i>b</i>"+IN.keyFlat):"&#9838;");
-		$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
+		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 	},
 	writeSelectSF: function(name){
 		var chooseSF = "";
@@ -1856,17 +2059,17 @@ panel = {
 			var s = MIDI.channels[i].sound ? " checked" : "";
 			var l = MIDI.channels[i].lock ? " checked" : "";
 			var INC = IN.channel == i ? " checked" : "";
-			var volume = `<input onfocus="this.blur();return false;" style="width:70px; height:10px;" type="range" min="0" max="200" value="`+MIDI.channels[i].gainNode.gain.value*100+`" onchange="MIDI.channels[`+i+`].gainNode.gain.value = (this.value / 100);" onmousemove="MIDI.channels[`+i+`].gainNode.gain.value = (this.value / 100);">`;
 			channelHTML += `
 				<label><input onclick='IN.setChannel(`+i+`);view.draw()' type='radio' name='INChannel' id='radioINC`+i+`'`+INC+` value='`+i+`'/>`+i+`</label>
 				<label><input onchange='MIDI.channels[`+i+`].view = this.checked;view.draw()' type='checkBox' id='checkV`+i+`'`+v+`/>View</label>
 				<label><input onchange='MIDI.channels[`+i+`].sound = this.checked' type='checkBox' id='checkS`+i+`'`+s+`/>Sound</label>
-				<label><input onchange='MIDI.channels[`+i+`].lock = this.checked;view.draw()' type='checkBox' id='checkL`+i+`'`+l+`/>Lock</label>`+volume+`<select onchange='panel.addSoundFont(SoundfontConfigs[this.value],`+i+`)'>` + panel.writeSelectSF(MIDI.channels[i].soundfontConfig.name)+`
+				<label><input onchange='MIDI.channels[`+i+`].lock = this.checked;view.draw()' type='checkBox' id='checkL`+i+`'`+l+`/>Lock</label> `+`<select onchange='panel.addSoundFont(SoundfontConfigs[this.value],`+i+`)'>` + panel.writeSelectSF(MIDI.channels[i].soundfontConfig.name)+`
+				<input type="button" onclick="recorder.deleteChannel(`+i+`);" value="x"`+(MIDI.channels.length<=1?' disabled="disabled"':'')+`>
 				<br>
 			`;
 		}
 		
-		channelHTML += `<button onclick="panel.addSoundFont(SoundfontConfigs[$('sfadd').value])">Add</button><select id="sfadd">` + panel.writeSelectSF();
+		channelHTML += `<hr><input type="button" onclick="panel.addSoundFont(SoundfontConfigs[$('sfadd').value])" value="Add" ><select id="sfadd">` + panel.writeSelectSF();
 		channelHTML += '<br><span id="ChannelProgress"></span>';
 		$("channel").innerHTML = channelHTML;
 	},
@@ -1879,5 +2082,10 @@ panel = {
 		},id);
 		if(!MIDI.channels[IN.channel]) IN.channel = 0;
 		panel.refreshChannelPanel();
+	},
+	refreshCC: function(){
+		$(LAN.sus).className = (sustainTrack.visible)?"greenOn":"green";
+		$(LAN.volume).className = (volumeTrack.visible)?"greenOn":"green";
+		$(LAN.speed).className = (speedTrack.visible)?"yellowOn":"yellow";
 	}
 }

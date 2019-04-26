@@ -169,7 +169,7 @@ ExpMidi.saveMIDIFile = function() {
 	}
 	var a = document.createElement('a');
 	var url = window.URL.createObjectURL(blob);
-	var filename = 'eop.midi';
+	var filename = new Date().toLocaleDateString().replace(/\//g,"/")+'.midi';
 	a.href = url;
 	a.download = filename;
 	a.click();
