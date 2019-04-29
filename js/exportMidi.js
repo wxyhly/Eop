@@ -18,15 +18,15 @@ ExpMidi.writeEvent = function(open, noteObj) {
 		if(ExpMidi.isPercussion(noteObj.c))
 			ExpMidi.changeState(open,ExpMidi.noteOn10);
 		else
-			ExpMidi.changeState(open,ExpMidi.noteOn);
+			ExpMidi.changeState(open,ExpMidi.noteOn+ExpMidi.ch);
 		open.push(noteObj.n, Math.round(noteObj.v));
 	}else if(noteObj.e=="sustain"){
 		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
-		ExpMidi.changeState(open,ExpMidi.cc);
+		ExpMidi.changeState(open,ExpMidi.cc+ExpMidi.ch);
 		open.push(64, noteObj.v);
 	}else if(noteObj.e=="volume"){
 		open = open.concat(ExpMidi.intTobuff(noteObj.dt));
-		ExpMidi.changeState(open,ExpMidi.cc);
+		ExpMidi.changeState(open,ExpMidi.cc+ExpMidi.ch);
 		open.push(7, noteObj.v);
 	}
 	return open;
@@ -144,16 +144,18 @@ ExpMidi.generate = function() {
 	data = data.concat(trackMTrk).concat([l>>24, (l>>16)&0xFF, (l>>8)&0xFF, l&0xFF]).concat(varydata);
 	*/
 	//分轨：
+	ExpMidi.ch = 0;
 	for(var nc of nnctxt){
 		ExpMidi.state = null;
 		if(!nc || !nc.length) continue;
-		var varydata = nc.instrumentId?[0x00,0xC0,nc.instrumentId]:[];
+		var varydata = nc.instrumentId?[0x00,0xC0+ExpMidi.ch,nc.instrumentId]:[];
 		for(var i=0; i<nc.length; i++){
 			varydata = ExpMidi.writeEvent(varydata, nc[i]);
 		}
 		varydata.push(0x00,0xFF,0x2F,0x00);
 		var l = varydata.length;
 		data = data.concat(trackMTrk).concat([l>>24, (l>>16)&0xFF, (l>>8)&0xFF, l&0xFF]).concat(varydata);
+		if(nc.instrumentId) ExpMidi.ch++;
 	}
 	var binary = new Uint8Array(data);
 	ExpMidi.blob = new Blob([binary],{type:"application/octet-binary"});

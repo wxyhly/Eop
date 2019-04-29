@@ -439,7 +439,7 @@ recorder = {
 		recorder.isPlaying = 0;
 		recorder.isQuantify = false;
 		recorder.nowQuantifyNote = [];
-		for(var i = 0; i < 500000; i++){
+		for(var i = 0; i < 800000; i++){
 			clearTimeout(i);
 		}
 		for(var c = 0; c < MIDI.channels.length; c++){
@@ -742,12 +742,12 @@ view = {
 		ctxt.stroke();
 		//Notes
 		ctxt.font="20px Arial";
-		for(var i = 0; i < storage.length; i++){
+		function drawNote(storage, i){
 			var d = storage[i].d || 0;
 			var opacite = storage[i].c == IN.channel ? 1:0.8;
-			if (storage[i].t + d < view.min || storage[i].t > view.max) continue;
+			if (storage[i].t + d < view.min || storage[i].t > view.max) return 0;
 			var selected = select.test(storage[i]);
-			if (!MIDI.channels[storage[i].c].view) continue; //this channel is not visible
+			if (!MIDI.channels[storage[i].c].view) return 0; //this channel is not visible
 			ctxt.fillStyle = velocity.getBoxColor(selected,storage[i].v,opacite);
 			var X = (storage[i].t-view.min)*view.k;
 			var Y = (storage[i].n-view.nmax)*view.nk;
@@ -767,6 +767,15 @@ view = {
 				
 				ctxt.fillText(view.list[(storage[i].n - keysig) % 12],X-view.dx, Y);
 			}
+		}
+		//Z轴关系：
+		for(var i = 0; i < storage.length; i++){
+			if(storage[i].c != IN.channel)
+				drawNote(storage,i);
+		}
+		for(var i = 0; i < storage.length; i++){
+			if(storage[i].c == IN.channel)
+				drawNote(storage,i);
 		}
 		eventBar.draw(IN.channel,"sustain");
 		eventBar.draw(IN.channel,"volume");
@@ -1046,15 +1055,45 @@ speedTrack = {
 	toAppendPoint: null,
 	finiSelect: function(){
 		var s = speedTrack.select;
+		var CommandRecorder = [];
 		recorder.calculeQ();
 		for(var i=0; i < recorder.speed.length; i++){
 			if(i && s && s.length == 2 && (s[0]<recorder.speed[i].t ^ s[1]<recorder.speed[i].t)){
-				recorder.speed.splice(i,1);
+				CommandRecorder.push(recorder.speed.splice(i,1)[0]);
 				i--;
 			}
 		}
-		speedTrack.select = null;
 		recorder.calculeT();
+		view.draw();
+		if(!CommandRecorder.length) {
+			speedTrack.select = null;
+			return 0;
+		}
+		new Command(
+			function(s0,s1){
+				recorder.calculeQ();
+				for(var i=0; i < recorder.speed.length; i++){
+					if(i && s && s.length == 2 && (s0<recorder.speed[i].t ^ s1<recorder.speed[i].t)){
+						recorder.speed.splice(i,1);
+						i--;
+					}
+				}
+				speedTrack.select = null;
+				recorder.calculeT();
+				view.draw();
+			}.bind(null,speedTrack.select[0],speedTrack.select[1]),
+			function(s){
+				recorder.calculeQ();
+				for(var i of s){
+					recorder.speed.push(i);
+				}
+				eventBar.sort(recorder.speed);
+				speedTrack.select = s;
+				recorder.calculeT();
+				view.draw();
+			}.bind(null,CommandRecorder)
+		).fe();
+		speedTrack.select = null;
 	},
 	toAppend: function(Pos){
 		var X = Pos.x/view.k+view.min;
@@ -1198,61 +1237,120 @@ select = {
 		}
 	},
 	del: function (){
-		var s = recorder.ctxt;
-		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) {
-				s.splice(i,1);
-				i--;
-			}
-		}
-		$(LAN.edit).className = "blueOff";
-		select.selectedArr = [];
-		view.draw();
+		new Command(
+			function (selectedArr){
+				var s = recorder.ctxt;
+				select.selectedArr = selectedArr;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) {
+						s.splice(i,1);
+						i--;
+					}
+				}
+				$(LAN.edit).className = "blueOff";
+				select.selectedArr = [];
+				view.draw();
+			}.bind(null,select.selectedArr),
+			function (selectedArr){
+				for(var i of selectedArr){
+					recorder.ctxt.push(i);
+				}
+				select.selectedArr = selectedArr;
+				view.draw();
+			}.bind(null,select.selectedArr)
+		).fe();
 	},
 	up: function (){
-		var s = recorder.ctxt;
-		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) s[i].n++;
-		}
-		view.draw();
+		new Command(
+			function(arr){
+				select.selectedArr = arr;
+				var s = recorder.ctxt;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) s[i].n++;
+				}
+				view.draw();
+			}.bind(null,select.selectedArr),
+			function(arr){
+				select.selectedArr = arr;
+				var s = recorder.ctxt;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) s[i].n--;
+				}
+				view.draw();
+			}.bind(null,select.selectedArr)
+		).fe();
 	},
 	down: function (){
-		var s = recorder.ctxt;
-		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) s[i].n--;
-		}
-		view.draw();
+		new Command(
+			function(arr){
+				select.selectedArr = arr;
+				var s = recorder.ctxt;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) s[i].n--;
+				}
+				view.draw();
+			}.bind(null,select.selectedArr),
+			function(arr){
+				select.selectedArr = arr;
+				var s = recorder.ctxt;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) s[i].n++;
+				}
+				view.draw();
+			}.bind(null,select.selectedArr)
+		).fe();
 	},
 	scale: function (scale){
-		var s = recorder.ctxt;
+		var s = select.selectedArr;
+		var CommandRecorderBefore = [];
+		for(var i = 0; i < s.length; i++){
+			CommandRecorderBefore.push({d:s[i].d,t:s[i].t});
+		}
 		var minQ = Infinity;
 		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) {
-				if(!s[i].q) {
-					s[i].q = recorder.ms2q(s[i].t);
-					s[i].dq = recorder.ms2q(s[i].t+s[i].d);
-				}
-				minQ = Math.min(s[i].q,minQ);
+			if(!s[i].q) {
+				s[i].q = recorder.ms2q(s[i].t);
+				s[i].dq = recorder.ms2q(s[i].t+s[i].d);
 			}
+			minQ = Math.min(s[i].q,minQ);
 		}
 		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) {
-				s[i].q = (s[i].q - minQ)*scale + minQ;
-				s[i].t = recorder.q2ms(s[i].q);
-				if(s[i].d){
-					s[i].dq = (s[i].dq - minQ)*scale + minQ;
-					s[i].d = recorder.q2ms(s[i].dq)-s[i].t;
-				}
+			s[i].q = (s[i].q - minQ)*scale + minQ;
+			s[i].t = recorder.q2ms(s[i].q);
+			if(s[i].d){
+				s[i].dq = (s[i].dq - minQ)*scale + minQ;
+				s[i].d = recorder.q2ms(s[i].dq)-s[i].t;
 			}
 		}
+		var CommandRecorderAfter = [];
+		for(var i = 0; i < s.length; i++){
+			CommandRecorderAfter.push({d:s[i].d,t:s[i].t});
+		}
 		view.draw();
+		var scaleCmd = function(s,cmdRcder){
+			for(var i = 0; i < s.length; i++){
+				s[i].t = cmdRcder[i].t;
+				if(s[i].d){
+					s[i].d = cmdRcder[i].d;
+				}
+			}
+			view.draw();
+		}
+		new Command(
+			scaleCmd.bind(null,s,CommandRecorderAfter),
+			scaleCmd.bind(null,s,CommandRecorderBefore)
+		).fe(true);
 	},
 	copy: function (){
 		recorder.sort();
 		var s = recorder.ctxt;
 		select.clipboard = [];
 		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) select.clipboard.push({c:s[i].c,n:s[i].n,v:s[i].v,t:s[i].t,d:s[i].d});
+			if(select.test(s[i])) {
+				s[i].q = recorder.ms2q(s[i].t);
+				s[i].dq = recorder.ms2q(s[i].t + s[i].d) - s[i].q;
+				select.clipboard.push({c:s[i].c,n:s[i].n,v:s[i].v,q:s[i].q,dq:s[i].dq});
+			}
 		}
 	},
 	cut: function (){
@@ -1262,29 +1360,62 @@ select = {
 	paste: function (){
 		var s = select.clipboard;
 		select.selectedArr = [];
+		var viewQ = recorder.ms2q(view.p);
 		for(var i=0; i<s.length;i++){
-			var newNote = {c:s[i].c,n:s[i].n,v:s[i].v,d:s[i].d,t:Math.round(s[i].t-s[0].t+view.p)};
+			var Q = s[i].q + viewQ - s[0].q;
+			var T = Math.round(recorder.q2ms(Q));
+			var newNote = {c:s[i].c,n:s[i].n,v:s[i].v,d:recorder.q2ms(s[i].dq + Q)-T,t: T};
 			recorder.ctxt.push(newNote);
 			select.selectedArr.push(newNote);
 		}
 		recorder.sort();
 		$(LAN.edit).className = (select.selectedArr.length)?"blueOn":"blueOff";
 		view.draw();
-	},
-	undo: function (){
-		var n = recorder.ctxt.pop();
-		view.moveP(n.t);
-		view.draw();
-	},
-	redo:function(){
-		
+		new Command(
+			function (selectedArr){
+				for(var i of selectedArr){
+					recorder.ctxt.push(i);
+				}
+				select.selectedArr = selectedArr;
+				view.draw();
+			}.bind(null,select.selectedArr),
+			function (selectedArr){
+				var s = recorder.ctxt;
+				select.selectedArr = selectedArr;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) {
+						s.splice(i,1);
+						i--;
+					}
+				}
+				$(LAN.edit).className = "blueOff";
+				select.selectedArr = [];
+				view.draw();
+			}.bind(null,select.selectedArr)
+		).fe(true);
 	},
 	moveLayer:function(){
 		var s = recorder.ctxt;
+		var CommandRecorder = [];
 		for(var i = 0; i < s.length; i++){
-			if(select.test(s[i])) s[i].c = IN.channel;
+			if(select.test(s[i])) CommandRecorder[i] = s[i].c;
 		}
-		view.draw();
+		new Command(
+			function(selectedArr){
+				select.selectedArr = selectedArr;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) s[i].c = IN.channel;
+				}
+				view.draw();
+			}.bind(null,select.selectedArr),
+			function(selectedArr){
+				select.selectedArr = selectedArr;
+				for(var i = 0; i < s.length; i++){
+					if(select.test(s[i])) s[i].c = CommandRecorder[i];
+				}
+				view.draw();
+			}.bind(null,select.selectedArr,CommandRecorder)
+		).fe();
 	}
 }
 
@@ -1373,7 +1504,23 @@ grid = {
 			}
 		}
 		if(note){
-			recorder.ctxt.push({c: IN.channel, n: note, v: PLAYER.autoVolume(note), t: view.p, d:grid.next()-view.p});
+			var n = {c: IN.channel, n: note, v: PLAYER.autoVolume(note), t: view.p, d:grid.next()-view.p};
+			recorder.ctxt.push(n);
+			new Command(
+				function(n){
+					recorder.ctxt.push(n);
+					recorder.sort();
+					select.selectedArr = [];
+					view.moveP(n.t);
+					view.draw();
+				}.bind(null,n),
+				function(n){
+					view.moveP(n.t);
+					recorder.ctxt.splice(recorder.ctxt.indexOf(n),1);
+					select.selectedArr = [];
+					view.draw();
+				}.bind(null,n)
+			).fe(true);
 		}
 	},
 	next: function (){
@@ -1404,7 +1551,18 @@ addEvent = {
 		var mousefini = function (evt) {
 			view.ismove = false;
 			if(speedTrack.toAppendPoint && IN.on[18] && speedTrack.visible && evt.button == 2){
-				speedTrack.toAppendPoint = null;		
+				var CommandRecorderSpeedAfter = recorder.speed.slice(0);
+				var CMD = function (sp){
+					recorder.calculeQ();
+					recorder.speed = sp;
+					recorder.calculeT();
+					view.draw();
+				}
+				new Command(
+					CMD.bind(null,CommandRecorderSpeedAfter),
+					CMD.bind(null,speedTrack.CommandRecorderSpeed)
+				).fe(true);
+				speedTrack.toAppendPoint = null;
 			}else if(speedTrack.select && evt.button == 0 && speedTrack.visible){
 				speedTrack.finiSelect();
 			}
@@ -1447,6 +1605,7 @@ addEvent = {
 					speedTrack.toAppendPoint = {};
 					eventBar.sort(recorder.speed);
 					recorder.calculeQ();
+					speedTrack.CommandRecorderSpeed = recorder.speed.slice(0);
 					speedTrack.toAppend(Pos);
 					speedTrack.append();
 					speedTrack.changeAppend();
@@ -1621,10 +1780,10 @@ addEvent = {
 						select.all();
 					break;
 					case 90://Z
-						select.undo();
+						CommandMgr.undo();
 					break;
 					case 89://Y
-						select.redo();
+						CommandMgr.redo();
 					break;
 					case 88://X
 						select.cut();
@@ -1780,6 +1939,19 @@ addEvent = {
 					//console.log ("length:"+recorder.nowQuantifyNote.length);
 					if(grid.enable){
 						pressnote.d = recorder.q2ms((Math.round(Q*grid.detail)+1)/grid.detail)-pressnote.t;
+						new Command(
+							function(n){
+								recorder.ctxt.push(n);
+								recorder.sort();
+								select.selectedArr = [];
+								view.draw();
+							}.bind(null,pressnote),
+							function(n){
+								recorder.ctxt.splice(recorder.ctxt.indexOf(n),1);
+								select.selectedArr = [];
+								view.draw();
+							}.bind(null,pressnote)
+						).fe(true);
 					}
 				}else if(!(recorder.isRecord === false)){
 					pressnote = recorder.record(IN.channel, note, PLAYER.autoVolume(note));
@@ -1806,6 +1978,19 @@ addEvent = {
 				}
 				if(!(recorder.isQuantify && !(recorder.isRecord === false) && grid.enable)){
 					n.d = new Date().getTime() - n.t - recorder.offset;
+					new Command(
+						function(n){
+							recorder.ctxt.push(n);
+							recorder.sort();
+							select.selectedArr = [];
+							view.draw();
+						}.bind(null,n),
+						function(n){
+							recorder.ctxt.splice(recorder.ctxt.indexOf(n),1);
+							select.selectedArr = [];
+							view.draw();
+						}.bind(null,n)
+					).fe(true);
 					view.draw();
 				}
 					MIDI.channels[IN.channel].onNote[n.n] = false;
@@ -2088,4 +2273,38 @@ panel = {
 		$(LAN.volume).className = (volumeTrack.visible)?"greenOn":"green";
 		$(LAN.speed).className = (speedTrack.visible)?"yellowOn":"yellow";
 	}
+}
+
+CommandMgr = {
+	undo: function(){
+		var sui = CommandMgr.queueUndo.pop();
+		if(sui){
+			CommandMgr.queueRedo.push(sui);
+			sui.undo();
+		}
+	},
+	redo:function(){
+		var sui = CommandMgr.queueRedo.pop();
+		if(sui){
+			CommandMgr.queueUndo.push(sui);
+			sui.exec();
+		}
+	},
+	queueUndo:[],
+	queueRedo:[],
+	maxCount: 50
+}
+
+Command = function(exec,undo){
+	this.exec = exec;
+	this.undo = undo;
+}
+Command.prototype.fe = function(done){
+	if(!done) this.exec();
+	CommandMgr.queueRedo = [];
+	CommandMgr.queueUndo.push(this);
+	if(CommandMgr.undo.length > CommandMgr.maxCount){
+		CommandMgr.queueUndo.shift();
+	}
+	return this;
 }
