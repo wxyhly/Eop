@@ -170,7 +170,7 @@ ImpMidi.timeSig = 0x58;
 ImpMidi.keySig = 0x59;
 ImpMidi.getSF = function(instrument){
 	var config = SoundfontConfigs["piano"];//par default
-	if(0==instrument) config = SoundfontConfigs["percussion"];
+	if(0===instrument) config = SoundfontConfigs["percussion"];
 	if(1<=instrument && instrument<=8) config = SoundfontConfigs["piano"];
 	if(41<=instrument && instrument<=48) config = SoundfontConfigs["cello"];
 	if(25<=instrument && instrument<=26) config = SoundfontConfigs["guitar"];
@@ -290,7 +290,7 @@ ImpMidi.mergeOnOff = function(tr){
 	for(var e of tr){
 		if(firstInstrument && ImpMidi.is(e) == ImpMidi.changeInstrument){
 			firstInstrument = false;
-			tr.instrument = e.n;
+			tr.instrument = e.n?e.n:1;
 		}
 		if(ImpMidi.is(e) == ImpMidi.noteOn && !noteE[e.n]){//若On且之前不是按下状态
 			noteE[e.n] = e;//记录是e按下了n
