@@ -265,6 +265,7 @@ IN = {
 	keysig: 0, tempsig: 0,
 	keepfirsttemp: false,//等待临时变音记号作用于下个音符
 	channel : 0,//current channel(all newly inputs will in this channel)
+	pedalInput: false,
 	setChannel :function(c){
 		IN.channel = c;
 		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
@@ -288,8 +289,10 @@ IN = {
 		if(!mute) PLAYER.play(IN.channel, note, null, null, d);
 		return note;
 	},
-	toggleSus: function (record){
-		MIDI.channels[IN.channel].sustain = !MIDI.channels[IN.channel].sustain;
+	toggleSus: function (record,state){
+		if(state === true || state === false)
+			MIDI.channels[IN.channel].sustain = state;
+		else MIDI.channels[IN.channel].sustain = !MIDI.channels[IN.channel].sustain;
 		
 		if(record){
 			recorder.recordEvent(IN.channel,"sustain",MIDI.channels[IN.channel].sustain);
@@ -1547,9 +1550,15 @@ addEvent = {
 				evt.clientY - rect.top * ($(obj).height / rect.height)
 			);
 		}
+		
 		$(obj).addEventListener("contextmenu", function (evt) {evt.preventDefault(); }, false);
 		var mousefini = function (evt) {
 			view.ismove = false;
+			if(IN.pedalInput){
+				IN.toggleSus(true,false);
+				view.draw();
+				return 0;
+			}
 			if(speedTrack.toAppendPoint && IN.on[18] && speedTrack.visible && evt.button == 2){
 				var CommandRecorderSpeedAfter = recorder.speed.slice(0);
 				var CMD = function (sp){
@@ -1599,6 +1608,11 @@ addEvent = {
 		$(obj).addEventListener("mouseout", mousefini);
 		$(obj).addEventListener("mousedown", function (evt) {
 			panel.set(null);//close all the windows
+			if(IN.pedalInput){
+				IN.toggleSus(true,true);
+				view.draw();
+				return 0;
+			}
 			var Pos = p2p(obj,evt);
 			if(evt.button == 2){
 				if(!select.selectedArr.length && IN.on[18] && speedTrack.visible){//CC speed
@@ -2025,6 +2039,7 @@ langue = {
 		this.channel = "Channel";
 		this.record = "RIE";
 		this.volume = "volume";
+		this.pedal = "pedal";
 	},
 	zh: function(){
 		this.play = "&#x25b6;";
@@ -2041,6 +2056,7 @@ langue = {
 		this.sus = "延音";
 		this.channel = "通道";
 		this.volume = "音量";
+		this.pedal = "踏板";
 	},
 	en: function(){
 		this.play = "&#x25b6;";
@@ -2057,6 +2073,7 @@ langue = {
 		this.speed = "Speed";
 		this.sus = "Sus";
 		this.channel = "Channel";
+		this.pedal = "pedal";
 	},
 }
 LAN = new langue.zh();
@@ -2070,6 +2087,10 @@ panel = {
 		{name:">|", className:"blue", action: function (){view.moveP(recorder.ctxt[recorder.ctxt.length-1].t)}},
 		{name:"volume", className:"blueOff", action: "disabled"},
 		{name:LAN.edit, className:"blueOff", action: "disabled"},
+		{name:LAN.pedal, className:"blue", action: function(){
+			IN.pedalInput = !IN.pedalInput;
+			$(LAN.pedal).className = IN.pedalInput?"blueOn":"blue";
+		}},
 		{name:"Keysig", className:"dis", action: "disabled"},
 		{name:"strSharp", className:"dis", action: "disabled"},
 		{name:"strFlat", className:"dis", action: "disabled"},
