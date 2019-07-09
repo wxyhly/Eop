@@ -799,7 +799,7 @@ view = {
 		ctxt.stroke();
 	},
 	runAt$: function (obj){
-		panel.$();// initiate panel
+		panel.$(obj);// initiate panel
 		recorder.offset = new Date().getTime();
 		view.width = $(obj).width = window.innerWidth-20;
 		view.height = $(obj).height = window.innerHeight-20;
@@ -2040,6 +2040,7 @@ langue = {
 		this.record = "RIE";
 		this.volume = "volume";
 		this.pedal = "pedal";
+		this.soor = "soor";
 	},
 	zh: function(){
 		this.play = "&#x25b6;";
@@ -2057,6 +2058,7 @@ langue = {
 		this.channel = "通道";
 		this.volume = "音量";
 		this.pedal = "踏板";
+		this.soor = "锁尔";
 	},
 	en: function(){
 		this.play = "&#x25b6;";
@@ -2074,6 +2076,7 @@ langue = {
 		this.sus = "Sus";
 		this.channel = "Channel";
 		this.pedal = "pedal";
+		this.soor = "lock";
 	},
 }
 LAN = new langue.zh();
@@ -2086,6 +2089,12 @@ panel = {
 		{name:"|<", className:"blue", action: recorder.goBack},
 		{name:">|", className:"blue", action: function (){view.moveP(recorder.ctxt[recorder.ctxt.length-1].t)}},
 		{name:"volume", className:"blueOff", action: "disabled"},
+		{name:LAN.soor, className:"blue", action: function(){
+			//if(!!document.pointerLockElement){
+				panel.obj.requestPointerLock();
+				//$(LAN.soor).className = IN.pedalInput?"blueOn":"blue";
+			//}
+		}},
 		{name:LAN.edit, className:"blueOff", action: "disabled"},
 		{name:LAN.pedal, className:"blue", action: function(){
 			IN.pedalInput = !IN.pedalInput;
@@ -2167,7 +2176,7 @@ panel = {
 		}
 		panel.dialog = str;
 	},
-	$: function (){// initiate
+	$: function (obj){// initiate
 		var Panel = document.createElement("DIV");
 		var Dialog = document.createElement("DIV");
 		var Tempo = document.createElement("DIV");
@@ -2176,6 +2185,7 @@ panel = {
 		var TA = document.createElement("TEXTAREA");
 		var BTN = document.createElement("BUTTON");
 		var BROWSE = document.createElement("INPUT");
+		panel.obj = $(obj);
 		BROWSE.type = "file";
 		BROWSE.accept = ".midi,.mid";
 		BTN.innerHTML = LAN.open;
