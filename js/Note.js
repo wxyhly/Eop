@@ -266,6 +266,7 @@ IN = {
 	keepfirsttemp: false,//等待临时变音记号作用于下个音符
 	channel : 0,//current channel(all newly inputs will in this channel)
 	pedalInput: false,
+	inverseTempsig: false,//翻转输入临时变音符号
 	setChannel :function(c){
 		IN.channel = c;
 		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
@@ -278,7 +279,7 @@ IN = {
 	pressnote: [], //store which notes are being pressed(use to record duration of note)
 	ki : function (note,d, mute){//note is the origin note from keyboard settings without b / #
 		//just play a sound without writing on record ctxt
-		var sig = IN.keysig + IN.tempsig;
+		var sig = IN.keysig + ((IN.inverseTempsig)?-IN.tempsig:IN.tempsig);
 		var N = [1,0,2,0,3,4,0,5,0,6,0,7][note % 12];
 		if(N>0 && IN.keySharp.indexOf(N)!=-1) sig++;
 		if(N>0 && IN.keyFlat.indexOf(N)!=-1) sig--;
@@ -1830,6 +1831,10 @@ addEvent = {
 					case 221://]
 						select.scale(2);
 					break;
+					case 192://~
+						IN.inverseTempsig = !IN.inverseTempsig;
+						panel.refresh();
+					break;
 					default:
 						note = {37: 1, 38: 4, 39: 3, 40: 2}[ev.keyCode];
 						//Ctrl + 方向键细分网格
@@ -1896,14 +1901,16 @@ addEvent = {
 				view.draw();
 			}else if(IN.mode == "eop"){
 				//方向键临时升降调：
-				var temparr = (IN.on[192]||IN.on[16]) ? 
+				var tempSign = (IN.on[192]||IN.on[16])^IN.inverseTempsig;
+				var temparr = tempSign ? 
 					{37: "2", 38: "3", 39: "7", 40: "6"} : 
 					{37: "1", 38: "4", 39: "6", 40: "5"}; // hold key "~" o shift(code:192)
 				note = temparr[ev.keyCode];
 				if(note){
-					if(IN.on[192]||IN.on[16]) {
+					if(tempSign) {
 						IN.strFlat += note;
-					}else{ IN.strSharp += note;
+					}else{
+						IN.strSharp += note;
 						IN.keepfirsttemp = false;
 					}
 				}
@@ -1928,12 +1935,16 @@ addEvent = {
 			}else if(IN.mode == "ki"){
 				note = IN.Ki[ev.keyCode];
 			}
-			if(IN.keyFlat!="")view.list = view.flatlist;
-			else if(IN.keySharp!="")view.list = view.sharplist;
-			else if(IN.strFlat!="")view.list = view.flatlist;
-			else if(IN.strSharp!="")view.list = view.sharplist;
-			else if(IN.tempsig<0)view.list = view.flatlist;
+			if(IN.tempsig<0)view.list = view.flatlist;
 			else if(IN.tempsig>0)view.list = view.sharplist;
+			else if(IN.keyFlat!="")view.list = view.flatlist;
+			else if(IN.keySharp!="")view.list = view.sharplist;
+			else if(IN.strFlat!="" && IN.strSharp=="")view.list = view.flatlist;
+			else if(IN.strSharp!="" && IN.strFlat=="")view.list = view.sharplist;
+			if(ev.keyCode == 32 || ev.keyCode == 192 || (IN.on[18] && ev.keyCode >= 48 && ev.keyCode <= 100)){
+				panel.refresh();
+				view.draw();
+			}
 			if(note) {
 				if(grid.enable && !MIDI.channels[IN.channel].sustain){
 					note = IN.ki(note,grid.gap/grid.detail);
@@ -2253,8 +2264,9 @@ panel = {
 	refresh: function (){
 		var i = Math.floor(IN.keysig/12);
 		$("Keysig").innerHTML = ['C','<i>#</i>C','D','<i>#</i>D/<i>b</i>E','E','F','<i>#</i>F/<i>b</i>G','G','<i>#</i>G/<i>b</i>A','A','<i>#</i>A/<i>b</i>B','B/<i>b</i>C'][(IN.keysig+120) % 12] + "<span class='small'>" + (i==0?"":i==1?"+":i==-1?"-":i) + "</span>";
-		$("strSharp").innerHTML = "<i>#</i>"+IN.strSharp;
-		$("strFlat").innerHTML = "<i>b</i>"+IN.strFlat;
+		
+		$("strSharp").innerHTML = (IN.inverseTempsig?"":"<b>")+"<i>#</i>"+IN.strSharp+(IN.inverseTempsig?"":"</b>");
+		$("strFlat").innerHTML = (!IN.inverseTempsig?"":"<b>")+"<i>b</i>"+IN.strFlat+(!IN.inverseTempsig?"":"</b>");
 		$("keyTemp").innerHTML = IN.keySharp.length?("<i>#</i>"+IN.keySharp):(IN.keyFlat.length?("<i>b</i>"+IN.keyFlat):"&#9838;");
 		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 	},
