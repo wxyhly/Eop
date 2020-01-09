@@ -1935,8 +1935,8 @@ addEvent = {
 			}else if(IN.mode == "ki"){
 				note = IN.Ki[ev.keyCode];
 			}
-			if(IN.tempsig<0)view.list = view.flatlist;
-			else if(IN.tempsig>0)view.list = view.sharplist;
+			if((IN.tempsig<0&&!IN.inverseTempsig)||(IN.tempsig>0&&IN.inverseTempsig))view.list = view.flatlist;
+			else if((IN.tempsig>0&&!IN.inverseTempsig)||(IN.tempsig<0&&IN.inverseTempsig))view.list = view.sharplist;
 			else if(IN.keyFlat!="")view.list = view.flatlist;
 			else if(IN.keySharp!="")view.list = view.sharplist;
 			else if(IN.strFlat!="" && IN.strSharp=="")view.list = view.flatlist;
