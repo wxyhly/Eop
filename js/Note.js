@@ -1608,6 +1608,7 @@ addEvent = {
 		$(obj).addEventListener("mouseup", mousefini);
 		$(obj).addEventListener("mouseout", mousefini);
 		$(obj).addEventListener("mousedown", function (evt) {
+			if(!!document.pointerLockElement) return 0;
 			panel.set(null);//close all the windows
 			if(IN.pedalInput){
 				IN.toggleSus(true,true);
@@ -1747,6 +1748,7 @@ addEvent = {
 		});
 		if(!Math.sign) Math.sign = function (x) { return typeof x === 'number' ? x ? x < 0 ? -1 : 1 : x === x ? 0 : NaN : NaN;}
 		$(obj).addEventListener("mousewheel", function (evt) { 
+			if(!!document.pointerLockElement) return 0;
 			var Pos = p2p(obj,evt);
 			var dx = Math.sign(event.wheelDelta) * (view.max - view.min)*0.1;
 			if((view.max-view.min<50 && dx>0) || (view.max-view.min>5000000&& dx<0))return 0;
@@ -1784,7 +1786,7 @@ addEvent = {
 				if(grid.enable){
 					// press /?  .>  tab for next grid
 					grid.IN(ev.keyCode == 191 ? 0:null);//续不续duration
-				}else{
+				}else if(ev.keyCode != 191){//191用于变音了，所以不切音
 					//切分音
 					IN.toggleSus(true);//true 代表recorder要记录
 				}
@@ -1903,8 +1905,8 @@ addEvent = {
 				//方向键临时升降调：
 				var tempSign = (IN.on[192]||IN.on[16])^IN.inverseTempsig;
 				var temparr = tempSign ? 
-					{37: "2", 38: "3", 39: "7", 40: "6"} : 
-					{37: "1", 38: "4", 39: "6", 40: "5"}; // hold key "~" o shift(code:192)
+					{37: "2", 38: "3", 39: "7", 40: "6", 191: (grid.enable)?null:"5"} : 
+					{37: "1", 38: "4", 39: "6", 40: "5", 191: (grid.enable)?null:"2"}; // hold key "~" o shift(code:192)
 				note = temparr[ev.keyCode];
 				if(note){
 					if(tempSign) {
@@ -1992,7 +1994,7 @@ addEvent = {
 				if(!IN.keepfirsttemp){
 					IN.tempsig = 0;
 				}
-			}else if((ev.keyCode == 191 ||ev.keyCode == 190||ev.keyCode == 20) && !grid.enable){
+			}else if((ev.keyCode == 190||ev.keyCode == 20) && !grid.enable){
 				IN.toggleSus(true);//true 代表recorder要记录
 				view.draw();
 			}
