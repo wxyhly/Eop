@@ -1,4 +1,9 @@
-body{user-select:none}
+body{
+	user-select:none;
+	overflow:scroll;
+	overflow-y:hidden;
+	overflow-x:hidden
+}
 #txthelp{
 	display: none;
 }
@@ -67,7 +72,8 @@ button.dis {
 }
 div.panel {
 	position: absolute;
-	left: 10%;
+	word-wrap:break-word;
+	left: 4%;
 	top: 8px;
 	z-index:1;
 }
@@ -91,6 +97,24 @@ div.tempo {
 	z-index:4;
 	background-color: #FFC;
 	opacity: 0.8;
+	display: none;
+}
+canvas.ioorpon {
+	position: absolute;
+	left: 10%;
+	bottom: 40px;
+	z-index:100;
+	background-color: #999;
+	opacity: 0.6;
+	display: none;
+}
+canvas.kiboard {
+	position: absolute;
+	left: 10px;
+	top: 80px;
+	z-index:99;
+	background-color: #FFF;
+	opacity: 0.6;
 	display: none;
 }
 div.dialog {

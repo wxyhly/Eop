@@ -23,7 +23,6 @@
 		onsuccess();
 		noteOn(channel, note: int, volume: number);
 **/
-
 MIDI = {
 	trackBuffers : [],//bufferSource
 	channels : [],//array of Channel objects
@@ -32,7 +31,7 @@ MIDI = {
 	noteToKeyS : {}, // 106 ==  As7
 	noteToKeyF : {}, // 106 ==  Bb7
 	soundfonts : [],//array of [int note, float playBackRate, bufferSource]
-	context : new AudioContext(),
+	context : new (typeof webkitAudioContext=="undefined"?AudioContext:webkitAudioContext)(),
 	loadSound : function(file,cb1,cb2,cb3){
 		var xmlhttp = new XMLHttpRequest();
 		xmlhttp.responseType = 'arraybuffer';
@@ -113,6 +112,7 @@ MIDI = {
 		}
 	},
 	noteOn : function(channel, note, volume) {
+		
 		if(!MIDI.channels[channel].sound)return 0;//the channel is mute.
 		var loaded = MIDI.channels[channel].soundfontConfig.loaded;
 		var tB = MIDI.trackBuffers[channel];
@@ -121,7 +121,6 @@ MIDI = {
 		var context = MIDI.context;
 		var source = context.createBufferSource();
 		source.buffer = buf;
-		
 		if(tB[note] && MIDI.channels[channel].soundfontConfig.settings.releaseSound != note){//若这个音符本来正在播放，切断它
 			MIDI.noteOff(channel, note, true);//true:忽略sustain强制关断
 		}
@@ -134,6 +133,7 @@ MIDI = {
 		source.playbackRate.value = pb[1];
 		source.start(0);
 		//console.log("on:"+channel+"-"+note);
+		
 		return MIDI.trackBuffers[channel][note][0];
 	},
 	noteOff : function(channel, note, hard) {//hard: 忽略sustain强制关断
@@ -146,6 +146,7 @@ MIDI = {
 		var bufferSource = tB[note];
 		var releaseSpeed = MIDI.channels[channel].soundfontConfig.settings.releaseSpeed;
 		//console.log("off:"+channel+"-"+note);
+	
 		if(bufferSource) {
 			if(MIDI.channels[channel].soundfontConfig.settings.releaseSound && !hard){
 				MIDI.noteOn(channel,MIDI.channels[channel].soundfontConfig.settings.releaseSound,10);
@@ -157,18 +158,23 @@ MIDI = {
 			var triggerRelease = function (bufSource, releaseSpeed){
 				bufSource.gainNode.gain.value -= releaseSpeed;
 				if(bufSource.gainNode.gain.value <= 0){
-					bufSource.stop(0);
+					try{bufSource.stop(0);}catch(e){}
 				}else{
 					setTimeout(triggerRelease,1);
 				}
 			}.bind(undefined, bufferSource, releaseSpeed);
 			triggerRelease();
 		}
+	
 	},
 	stop : function (channel, note){//hard stop
 		var bufferSource = MIDI.trackBuffers[channel][note];
 		if(bufferSource) {
-			bufferSource.stop(0);
+			try{
+				bufferSource.stop(0);
+			}catch(e){
+
+			}
 		}
 	},
 	onprogress: function(msg){
@@ -177,7 +183,7 @@ MIDI = {
 	cc_default:
 	{
 		"sustain": false,
-		"volume": 100,
+		"volume": 100
 	}
 }
 var A0 = 0x15; // first note
@@ -277,7 +283,7 @@ IN = {
 	strSharp: "", strFlat: "", keySharp: "", keyFlat: "",
 	on: {},  //store which keys are being pressed
 	pressnote: [], //store which notes are being pressed(use to record duration of note)
-	ki : function (note,d, mute){//note is the origin note from keyboard settings without b / #
+	ki : function (note,d, mute,force){//note is the origin note from keyboard settings without b / #
 		//just play a sound without writing on record ctxt
 		var sig = IN.keysig + ((IN.inverseTempsig)?-IN.tempsig:IN.tempsig);
 		var N = [1,0,2,0,3,4,0,5,0,6,0,7][note % 12];
@@ -287,7 +293,7 @@ IN = {
 		if(N>0 && IN.strFlat.indexOf(N)!=-1) sig--;
 		note += sig;
 		//if(IN.onNote[note])MIDI.noteOff(IN.channel,note,releaseSpeed);
-		if(!mute) PLAYER.play(IN.channel, note, null, null, d);
+		if(!mute) PLAYER.play(IN.channel, note, force, null, d);
 		return note;
 	},
 	toggleSus: function (record,state){
@@ -379,7 +385,6 @@ recorder = {
 		recorder.stop();
 		recorder.offset = Math.round(new Date().getTime() - view.p);
 		recorder.isWait = false;
-		
 		var stor = recorder.ctxt;
 		for(var i = 0; i < stor.length; i++){
 			var dt = Math.round((stor[i].t - view.p)/recorder.playbackSpeed);
@@ -1184,6 +1189,10 @@ select = {
 				(select.rect.yb-select.rect.ya)*view.nk);
 		}
 	},
+	updateEdit: function(){
+		$(LAN.edit).className = (select.selectedArr.length)?"blueOn":"blueOff";
+		screenKeyboard.draw();
+	},
 	testRect: function (n){
 		var ch = MIDI.channels[n.c];
 		if(!ch.view || ch.lock || !select.rect) return false;
@@ -1213,8 +1222,8 @@ select = {
 		for(var i = 0; i < s.length; i++){
 			if(select.test(s[i])) newselectedArr.push(s[i]);
 		}
-		$(LAN.edit).className = (newselectedArr.length)?"blueOn":"blueOff";
 		select.selectedArr = newselectedArr;
+		select.updateEdit();
 		select.rect = null;
 		if(select.selectedArr.length){
 			recorder.isWait = true;
@@ -1231,7 +1240,7 @@ select = {
 			if(MIDI.channels[n.c].view && !MIDI.channels[n.c].lock)
 				select.selectedArr.push(n);
 		}
-		$(LAN.edit).className = (select.selectedArr.length)?"blueOn":"blueOff";
+		select.updateEdit();
 		view.draw();
 		if(select.selectedArr.length){
 			recorder.isWait = true;
@@ -1373,7 +1382,7 @@ select = {
 			select.selectedArr.push(newNote);
 		}
 		recorder.sort();
-		$(LAN.edit).className = (select.selectedArr.length)?"blueOn":"blueOff";
+		select.updateEdit();
 		view.draw();
 		new Command(
 			function (selectedArr){
@@ -1547,8 +1556,8 @@ addEvent = {
 		var p2p = function (obj,evt){
 			var rect = $(obj).getBoundingClientRect(); 
 			return p(
-				evt.clientX - rect.left * ($(obj).width / rect.width),
-				evt.clientY - rect.top * ($(obj).height / rect.height)
+				evt.clientX||evt.changedTouches[0].clientX - rect.left * ($(obj).width / rect.width),
+				evt.clientY||evt.changedTouches[0].clientY - rect.top * ($(obj).height / rect.height)
 			);
 		}
 		
@@ -1605,16 +1614,14 @@ addEvent = {
 				view.draw();
 			}
 		}
-		$(obj).addEventListener("mouseup", mousefini);
-		$(obj).addEventListener("mouseout", mousefini);
-		$(obj).addEventListener("mousedown", function (evt) {
-			if(!!document.pointerLockElement) return 0;
-			panel.set(null);//close all the windows
+		var mtcdown = function (evt) {
 			if(IN.pedalInput){
 				IN.toggleSus(true,true);
 				view.draw();
 				return 0;
 			}
+			panel.set(null);//close all the windows
+			if(!!document.pointerLockElement) return 0;
 			var Pos = p2p(obj,evt);
 			if(evt.button == 2){
 				if(!select.selectedArr.length && IN.on[18] && speedTrack.visible){//CC speed
@@ -1682,8 +1689,12 @@ addEvent = {
 			}else {
 				view.ismove = true;
 				view.oldP = Pos.x/view.k+view.min;
+				//evt.preventDefault();
 			}
-		});
+		};
+		$(obj).addEventListener("mouseup", mousefini);
+		$(obj).addEventListener("mouseout", mousefini);
+		$(obj).addEventListener("mousedown", mtcdown);
 		$(obj).addEventListener("mousemove", function (evt) { 
 			var Pos = p2p(obj,evt);
 			if(view.ismove){
@@ -1746,6 +1757,19 @@ addEvent = {
 				}
 			}
 		});
+		$(obj).addEventListener("touchstart", mtcdown);
+		$(obj).addEventListener("touchmove", function (evt) {
+			var Pos = p2p(obj,evt);
+			var gap = Pos.x/view.k+view.min - view.oldP;
+					view.min -= gap;
+					view.max -= gap;
+					view.oldP = Pos.x/view.k+view.min;
+					view.draw();
+			evt.preventDefault();
+		});
+		$(obj).addEventListener("touchend", function (evt) {
+			evt.preventDefault();
+		});
 		if(!Math.sign) Math.sign = function (x) { return typeof x === 'number' ? x ? x < 0 ? -1 : 1 : x === x ? 0 : NaN : NaN;}
 		$(obj).addEventListener("mousewheel", function (evt) { 
 			if(!!document.pointerLockElement) return 0;
@@ -1765,10 +1789,12 @@ addEvent = {
 			view.k = view.width / (view.max - view.min);
 			view.nk = view.height / (view.nmin - view.nmax);
 			view.draw();
+			screenKeyboard.resize(window.innerWidth,window.innerHeight);
+			kipon.resize(window.innerWidth,window.innerHeight);
 		}, false);
 	},
 	INKey: function (){
-		document.addEventListener('keydown', function( ev ) {
+		IN.onkeydown = function( ev ) {
 			if(IN.on[ev.keyCode]||(!IN.enable))return 0 ;
 			var note;
 			IN.on[ev.keyCode] = true;
@@ -1901,6 +1927,8 @@ addEvent = {
 				}
 				panel.refresh();
 				view.draw();
+			}else if(ev.kipon){
+				if(ev.keyCode>=A0) note = ev.keyCode;//kipon
 			}else if(IN.mode == "eop"){
 				//方向键临时升降调：
 				var tempSign = (IN.on[192]||IN.on[16])^IN.inverseTempsig;
@@ -1947,11 +1975,18 @@ addEvent = {
 				panel.refresh();
 				view.draw();
 			}
+			var channel = ev.kipon? ev.channel : IN.channel;
 			if(note) {
-				if(grid.enable && !MIDI.channels[IN.channel].sustain){
-					note = IN.ki(note,grid.gap/grid.detail);
-				}else{
-					note = IN.ki(note);
+				var F = null;
+				//$("progress").innerHTML = ev.force;
+				if(ev.force){
+					F = Math.min(127,128*ev.force);
+					//$("progress").innerHTML = F;
+				}
+				var duration = (grid.enable && !MIDI.channels[channel].sustain)?grid.gap/grid.detail:null;
+				note = ev.kipon?note:IN.ki(note,duration,null,F);
+				if(ev.kipon){
+					PLAYER.play(channel, note, F, null, duration);
 				}
 				IN.keepfirsttemp = false;
 				if(!(IN.on[32]||IN.on[192]))IN.tempsig = 0;
@@ -1959,7 +1994,7 @@ addEvent = {
 				if(grid.enable && !recorder.isQuantify){
 					grid.IN(note);
 				}else if(recorder.isQuantify && !(recorder.isRecord === false)){
-					pressnote = recorder.record(IN.channel, note, PLAYER.autoVolume(note));
+					pressnote = recorder.record(channel, note, F||PLAYER.autoVolume(note));
 					var Q = recorder.ms2q(pressnote.t);
 					pressnote.t = recorder.q2ms(Math.round(Q*grid.detail)/grid.detail);
 					recorder.nowQuantifyNote.push(pressnote);
@@ -1981,14 +2016,15 @@ addEvent = {
 						).fe(true);
 					}
 				}else if(!(recorder.isRecord === false)){
-					pressnote = recorder.record(IN.channel, note, PLAYER.autoVolume(note));
+					pressnote = recorder.record(channel, note, F||PLAYER.autoVolume(note));
 				}
 				IN.pressnote[ev.keyCode] = pressnote;
+				MIDI.channels[channel].onNote[note] = true;
 			}
-			MIDI.channels[IN.channel].onNote[note] = true;
+			screenKeyboard.draw();
 			ev.preventDefault();
-		});
-		document.addEventListener('keyup', function( ev ) {
+		}
+		IN.onkeyup = function( ev ) {
 			var key = String.fromCharCode(ev.keyCode);
 			if(ev.keyCode == 32 || ev.keyCode == 192 ){
 				if(!IN.keepfirsttemp){
@@ -2000,8 +2036,9 @@ addEvent = {
 			}
 			var n = IN.pressnote[ev.keyCode];
 			if(n){
-				if(!MIDI.channels[IN.channel].sustain){
-					MIDI.noteOff(IN.channel,n.n);
+				var channel = ev.kipon? ev.channel : IN.channel;
+				if(!MIDI.channels[channel].sustain){
+					MIDI.noteOff(channel,n.n);
 				}
 				if(!(recorder.isQuantify && !(recorder.isRecord === false) && grid.enable)){
 					n.d = new Date().getTime() - n.t - recorder.offset;
@@ -2020,12 +2057,15 @@ addEvent = {
 					).fe(true);
 					view.draw();
 				}
-					MIDI.channels[IN.channel].onNote[n.n] = false;
+					MIDI.channels[channel].onNote[n.n] = false;
 				
 			}
 			IN.pressnote[ev.keyCode] = false;
 			IN.on[ev.keyCode] = false;
-		});
+			screenKeyboard.draw();
+		}
+		document.addEventListener('keydown', IN.onkeydown);
+		document.addEventListener('keyup', IN.onkeyup);
 	}
 }
 
@@ -2054,6 +2094,7 @@ langue = {
 		this.volume = "volume";
 		this.pedal = "pedal";
 		this.soor = "soor";
+		this.ioorpon = "ioor";
 	},
 	zh: function(){
 		this.play = "&#x25b6;";
@@ -2072,6 +2113,7 @@ langue = {
 		this.volume = "音量";
 		this.pedal = "踏板";
 		this.soor = "锁尔";
+		this.ioorpon = "键盘";
 	},
 	en: function(){
 		this.play = "&#x25b6;";
@@ -2090,6 +2132,7 @@ langue = {
 		this.channel = "Channel";
 		this.pedal = "pedal";
 		this.soor = "lock";
+		this.ioorpon = "Keyboard";
 	},
 }
 LAN = new langue.zh();
@@ -2113,6 +2156,20 @@ panel = {
 			IN.pedalInput = !IN.pedalInput;
 			$(LAN.pedal).className = IN.pedalInput?"blueOn":"blue";
 		}},
+		{name:LAN.ioorpon, className:"blue", action: function(){
+			if($("ioorpon").style.display == "block"){
+				$("ioorpon").style.display = "none";
+				$("kiboard").style.display = "block";
+				kipon.draw();
+			}else if($("kiboard").style.display == "block"){
+				$("kiboard").style.display = "none";
+				$("ioorpon").style.display = "none";
+			}else{
+				$("ioorpon").style.display = "block";
+				$("kiboard").style.display = "none";
+				screenKeyboard.draw();
+			}
+		}},
 		{name:"Keysig", className:"dis", action: "disabled"},
 		{name:"strSharp", className:"dis", action: "disabled"},
 		{name:"strFlat", className:"dis", action: "disabled"},
@@ -2120,6 +2177,7 @@ panel = {
 		{name:"EOP", className:"white", action: function (){
 			IN.mode = (IN.mode=="eop")?"ki":"eop";
 			$("EOP").innerHTML = IN.mode.toUpperCase();
+			screenKeyboard.draw();
 		}},
 		{name:LAN.channel, className:"green", action: function(){
 			panel.set(LAN.channel);
@@ -2195,6 +2253,8 @@ panel = {
 		var Tempo = document.createElement("DIV");
 		var Channel = document.createElement("DIV");
 		var Help = document.createElement("DIV");
+		var Ioorpon = document.createElement("CANVAS");
+		var Kiboard = document.createElement("CANVAS");
 		var TA = document.createElement("TEXTAREA");
 		var BTN = document.createElement("BUTTON");
 		var BROWSE = document.createElement("INPUT");
@@ -2221,10 +2281,14 @@ panel = {
 		Channel.className = "channel";
 		Tempo.className = "tempo";
 		Help.className = "help";
+		Ioorpon.className = "ioorpon";
+		Kiboard.className = "kiboard";
 		Dialog.className = "dialog";
 		BTN.className = "dialog";
 		TA.className = "dialog";
 		Tempo.id = "tempo";
+		Ioorpon.id = "ioorpon";
+		Kiboard.id = "kiboard";
 		Help.id = "help";
 		Dialog.id = "dialog";
 		TA.id = "output";
@@ -2253,6 +2317,10 @@ panel = {
 		document.body.appendChild(Dialog);
 		document.body.appendChild(Tempo);
 		document.body.appendChild(Help);
+		document.body.appendChild(Ioorpon);
+		document.body.appendChild(Kiboard);
+		screenKeyboard.init();
+		kipon.init();
 		var tempoHTML = 'x<input id="playSpeed" value="1" style="width:30px" onfocus="IN.enable = false" onblur="IN.enable = true" onchange="recorder.setSpeed(Number(this.value));"> <input onfocus="this.blur();return false;" style="width:70px; height:10px;" id="playSpeedBar" type="range" min="0" max="200" value="100" onchange="recorder.setSpeed(this.value/100);"> <button onclick="recorder.scale();view.draw();">'+LAN.scale+'</button><hr>&#9833; = <input id="bpm" value="120" style="width:30px" onfocus="IN.enable = false" onblur="IN.enable = true"> <button onclick="grid.gap=60/$(\'bpm\').value*1000;view.draw();">Set</button> <button onclick="recorder.setSpeed($(\'bpm\').value*grid.gap/60000);recorder.scale();view.draw();">'+LAN.scale+'</button>';
 		var helpHTML = $('txthelp').innerHTML;
 		Tempo.innerHTML = tempoHTML;
@@ -2283,25 +2351,30 @@ panel = {
 	},
 	refreshChannelPanel: function(){
 		var channelHTML = "";
-		
+		kipon.rows = 0;
 		for(var i in MIDI.channels){
 			var v = MIDI.channels[i].view ? " checked" : "";
 			var s = MIDI.channels[i].sound ? " checked" : "";
 			var l = MIDI.channels[i].lock ? " checked" : "";
 			var INC = IN.channel == i ? " checked" : "";
+			if(!MIDI.channels[i].lock){
+				kipon.channels[kipon.rows] = i;
+				kipon.rows++;
+			}
 			channelHTML += `
 				<label><input onclick='IN.setChannel(`+i+`);view.draw()' type='radio' name='INChannel' id='radioINC`+i+`'`+INC+` value='`+i+`'/>`+i+`</label>
 				<label><input onchange='MIDI.channels[`+i+`].view = this.checked;view.draw()' type='checkBox' id='checkV`+i+`'`+v+`/>View</label>
 				<label><input onchange='MIDI.channels[`+i+`].sound = this.checked' type='checkBox' id='checkS`+i+`'`+s+`/>Sound</label>
-				<label><input onchange='MIDI.channels[`+i+`].lock = this.checked;view.draw()' type='checkBox' id='checkL`+i+`'`+l+`/>Lock</label> `+`<select onchange='panel.addSoundFont(SoundfontConfigs[this.value],`+i+`)'>` + panel.writeSelectSF(MIDI.channels[i].soundfontConfig.name)+`
+				<label><input onchange='MIDI.channels[`+i+`].lock = this.checked;view.draw();panel.refreshChannelPanel()' type='checkBox' id='checkL`+i+`'`+l+`/>Lock</label> `+`<select onchange='panel.addSoundFont(SoundfontConfigs[this.value],`+i+`)'>` + panel.writeSelectSF(MIDI.channels[i].soundfontConfig.name)+`
 				<input type="button" onclick="recorder.deleteChannel(`+i+`);" value="x"`+(MIDI.channels.length<=1?' disabled="disabled"':'')+`>
 				<br>
 			`;
 		}
-		
+		if(!kipon.rows){kipon.rows = 1;kipon.channels[0] = 0;}
 		channelHTML += `<hr><input type="button" onclick="panel.addSoundFont(SoundfontConfigs[$('sfadd').value])" value="Add" ><select id="sfadd">` + panel.writeSelectSF();
 		channelHTML += '<br><span id="ChannelProgress"></span>';
 		$("channel").innerHTML = channelHTML;
+		kipon.draw();
 	},
 	addSoundFont: function(sf,id){
 		MIDI.onprogress = function(msg){
