@@ -1556,8 +1556,8 @@ addEvent = {
 		var p2p = function (obj,evt){
 			var rect = $(obj).getBoundingClientRect(); 
 			return p(
-				evt.clientX||evt.changedTouches[0].clientX - rect.left * ($(obj).width / rect.width),
-				evt.clientY||evt.changedTouches[0].clientY - rect.top * ($(obj).height / rect.height)
+				(evt.clientX||evt.changedTouches[0].clientX) - rect.left * ($(obj).width / rect.width),
+				(evt.clientY||evt.changedTouches[0].clientY) - rect.top * ($(obj).height / rect.height)
 			);
 		}
 		
