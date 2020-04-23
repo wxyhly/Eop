@@ -2333,7 +2333,7 @@ panel = {
 	
 	refresh: function (){
 		var i = Math.floor(IN.keysig/12);
-		$("Keysig").innerHTML = ['C','<i>#</i>C','D','<i>#</i>D/<i>b</i>E','E','F','<i>#</i>F/<i>b</i>G','G','<i>#</i>G/<i>b</i>A','A','<i>#</i>A/<i>b</i>B','B/<i>b</i>C'][(IN.keysig+120) % 12] + "<span class='small'>" + (i==0?"":i==1?"+":i==-1?"-":i) + "</span>";
+		$("Keysig").innerHTML = ['C','<i>#</i>C/<i>b</i>D','D','<i>b</i>E','E','F','<i>#</i>F/<i>b</i>G','G','<i>b</i>A','A','<i>b</i>B','B/<i>b</i>C'][(IN.keysig+120) % 12] + "<span class='small'>" + (i==0?"":i==1?"+":i==-1?"-":i) + "</span>";
 		
 		$("strSharp").innerHTML = (IN.inverseTempsig?"":"<b>")+"<i>#</i>"+IN.strSharp+(IN.inverseTempsig?"":"</b>");
 		$("strFlat").innerHTML = (!IN.inverseTempsig?"":"<b>")+"<i>b</i>"+IN.strFlat+(!IN.inverseTempsig?"":"</b>");
