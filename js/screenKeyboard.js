@@ -265,7 +265,7 @@ var kipon = {
         if($("kiboard").style.display=="none") return 0;
         var ki = $("kiboard");
         var ctxt = ctxt$("kiboard");
-        ctxt.clearRect(0,0,1500,800);
+        ctxt.clearRect(0,0,2000,2000);
         var w = ki.width, h = ki.height-kipon.ioorSize*0.4, s = kipon.ioorSize;
         ctxt.font = (s*0.3)+"px Georgia";
         ctxt.strokeStyle = "#000";
