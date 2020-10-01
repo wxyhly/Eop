@@ -160,6 +160,7 @@ MIDI = {
 				if(bufSource.gainNode.gain.value <= 0){
 					try{bufSource.stop(0);}catch(e){}
 				}else{
+					//new setTimeoutMgr(triggerRelease,1);
 					setTimeout(triggerRelease,1);
 				}
 			}.bind(undefined, bufferSource, releaseSpeed);
@@ -214,13 +215,30 @@ Channel = function(context, sfConfig){
 	this.soundfontConfig = sfConfig;
 	this.onNote = {};
 };
+setTimeoutMgr = function(cb,delay){
+	this.id = setTimeoutMgr.nextId++;
+	setTimeoutMgr.list[this.id] = setTimeout(
+		function(id){
+			delete setTimeoutMgr.list[id];
+			cb();
+		}.bind(null, this.id)
+	,delay);
+}
+setTimeoutMgr.nextId = 0;
+setTimeoutMgr.list = [];
+setTimeoutMgr.clearAll = function(){
+	for(var i in setTimeoutMgr.list){
+		clearTimeout(setTimeoutMgr.list[i]);
+	}
+	setTimeoutMgr.list = [];
+	setTimeoutMgr.nextId = 0;
+}
 /**
 	PLAYER
 		volume: number;
 		play(channel, note: int, [volume: number, delay: int, recorder: Recorder]);
 		autoVolume(note: int): number;
 **/
-
 PLAYER = {
 	autoVolume : function (note){
 		var x1 = 20; var y1 = 100;
@@ -236,7 +254,7 @@ PLAYER = {
 			delay = 0;
 			MIDI.channels[channel].onNote[note] = true;
 		}else{
-			setTimeout(function (){
+			new setTimeoutMgr(function (){
 				MIDI.noteOn(channel, note, volume);
 				MIDI.channels[channel].onNote[note] = true;
 				if(cb){cb()}
@@ -244,7 +262,7 @@ PLAYER = {
 		}
 		
 		if(duration > 0){
-			setTimeout(
+			new setTimeoutMgr(
 				function (){
 					MIDI.noteOff(channel, note);
 					MIDI.channels[channel].onNote[note] = false;
@@ -400,7 +418,7 @@ recorder = {
 				}
 			});
 			//move View Pointer:
-			setTimeout(
+			new setTimeoutMgr(
 				function (i){
 					view.moveP(stor[i].t);
 				}.bind(undefined, i),
@@ -434,7 +452,7 @@ recorder = {
 								view.moveP(k.t);
 							}
 					}
-					setTimeout(
+					new setTimeoutMgr(
 						cb.bind(undefined, k, MIDI.channels[i],i),
 						dt
 					);
@@ -448,9 +466,10 @@ recorder = {
 		recorder.isPlaying = 0;
 		recorder.isQuantify = false;
 		recorder.nowQuantifyNote = [];
-		for(var i = 0; i < 800000; i++){
+		/*for(var i = 0; i < 800000; i++){
 			clearTimeout(i);
-		}
+		}*/
+		setTimeoutMgr.clearAll();
 		for(var c = 0; c < MIDI.channels.length; c++){
 			for(var i = A0; i <= C8; i++){
 				MIDI.stop(c,i);
@@ -640,7 +659,7 @@ recorder = {
 			recorder.offset = Math.round(new Date().getTime() - view.p);//防误差累计
 			view.draw();
 			MIDI.noteOn(0,92,100);
-			setTimeout(MIDI.noteOff(0,92,100),200);
+			new setTimeoutMgr(MIDI.noteOff(0,92,100),200);
 			
 			var stor = recorder.ctxt;
 			for(var i = 0; i < stor.length; i++){
@@ -653,7 +672,7 @@ recorder = {
 			}
 			
 			
-			setTimeout(loop.bind(null,nextTime),nextTime-time);//节拍器
+			new setTimeoutMgr(loop.bind(null,nextTime),nextTime-time);//节拍器
 			//recorder.nowQuantifyNote = [];
 		}
 		loop(view.p);//对齐大拍子
@@ -1497,7 +1516,7 @@ grid = {
 	IN: function(note){
 		if(recorder.isWait){
 			recorder.isWait = false;
-			setTimeout(function(){
+			new setTimeoutMgr(function(){
 				var nt = grid.next();
 				if(note == 0 && !speedTrack.visible){//续不续duration: 0要续，null不续
 					for(var n of recorder.ctxt){
