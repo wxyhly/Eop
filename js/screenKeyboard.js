@@ -229,7 +229,7 @@ var screenKeyboard = {
             if(e.changedTouches && index<e.changedTouches.length-1){
                 mmove(e,++index);
             }
-            try{e.preventDefault();}catch(e){}
+            try{if(e.touches)e.preventDefault();}catch(e){}
         };
         var mup = function(e,index){
             index = index || 0;
@@ -476,7 +476,7 @@ var kipon = {
             if(e.changedTouches && index<e.changedTouches.length-1){
                 mmove(e,++index);
             }
-            try{e.preventDefault();}catch(e){}
+            try{if(e.touches)e.preventDefault();}catch(e){}
         };
         var mup = function(e,index){
             index = index || 0;
