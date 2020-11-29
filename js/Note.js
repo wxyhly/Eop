@@ -342,7 +342,7 @@ IN = {
 
 	//keyboard Settings
 	Eop: {
-		90: 36, 88: 38, 67: 40, 86: 41, 66: 43, 78: 45, 77: 47, 188: 48, //190: 50, 
+		90: 36, 88: 38, 67: 40, 86: 41, 66: 43, 78: 45, 77: 47, 188: 48, 190: 50, 
 		65: 48, 83: 50, 68: 52, 70: 53, 71: 55, 72: 57, 74: 59, 75: 60, 76: 62, 186: 64, 222: 65, 13: 67, 
 		81: 60, 87: 62, 69: 64, 82: 65, 84: 67, 89: 69, 85: 71, 73: 72, 79: 74, 80: 76, 219: 77, 221: 79, 220: 81, 
 		49: 72, 50: 74, 51: 76, 52: 77, 53: 79, 54: 81, 55: 83, 56: 84, 57: 86, 48: 88, 189: 89, 187: 91, 8: 93
@@ -1827,7 +1827,7 @@ addEvent = {
 				recorder.nowQuantifyNote = [];
 				view.draw();
 			}
-			if(ev.keyCode == 191||ev.keyCode == 190||ev.keyCode == 20){
+			if(ev.keyCode == 191||(!IN.pedalInput && ev.keyCode == 190)||ev.keyCode == 20){
 				if(grid.enable){
 					// press /?  .>  tab for next grid
 					grid.IN(ev.keyCode == 191 ? 0:null);//续不续duration
@@ -1955,7 +1955,7 @@ addEvent = {
 					{37: "2", 38: "3", 39: "7", 40: "6", 191: (grid.enable)?null:"5"} : 
 					{37: "1", 38: "4", 39: "6", 40: "5", 191: (grid.enable)?null:"2"}; // hold key "~" o shift(code:192)
 				note = temparr[ev.keyCode];
-				if(note){
+				if(note){//如果有方向键临时升降，写入strFlat/strSharp
 					if(tempSign) {
 						IN.strFlat += note;
 					}else{
@@ -1963,7 +1963,7 @@ addEvent = {
 						IN.keepfirsttemp = false;
 					}
 				}
-				note = IN.Eop[ev.keyCode];
+				note = (ev.keyCode==190 && !IN.pedalInput) ? null : IN.Eop[ev.keyCode]; //不开鼠标踏板时.>键(190)不发音，给踏板了
 				if(!note){
 					if(ev.keyCode == 16){ //shift 
 						IN.strSharp = "";
@@ -2049,7 +2049,7 @@ addEvent = {
 				if(!IN.keepfirsttemp){
 					IN.tempsig = 0;
 				}
-			}else if((ev.keyCode == 190||ev.keyCode == 20) && !grid.enable){
+			}else if(((!IN.pedalInput && ev.keyCode == 190)||ev.keyCode == 20) && !grid.enable){
 				IN.toggleSus(true);//true 代表recorder要记录
 				view.draw();
 			}
