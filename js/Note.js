@@ -288,6 +288,7 @@ IN = {
 	mode: "eop",  //input mode, choix disponible: [eop, ki, si]
 	keysig: 0, tempsig: 0,
 	keepfirsttemp: false,//等待临时变音记号作用于下个音符
+	naturize: false,//是否还原所有变化音
 	channel : 0,//current channel(all newly inputs will in this channel)
 	pedalInput: false,
 	inverseTempsig: false,//翻转输入临时变音符号
@@ -298,17 +299,19 @@ IN = {
 	enable: true,
 	sustain: true,  //sustain
 	sustainDelay: 50, // ms hqe release sustain key e hqet liah
-	strSharp: "", strFlat: "", keySharp: "", keyFlat: "",
+	strSharp: "", strFlat: "", strNature:"", keySharp: "", keyFlat: "",
 	on: {},  //store which keys are being pressed
 	pressnote: [], //store which notes are being pressed(use to record duration of note)
 	ki : function (note,d, mute,force){//note is the origin note from keyboard settings without b / #
 		//just play a sound without writing on record ctxt
-		var sig = IN.keysig + ((IN.inverseTempsig)?-IN.tempsig:IN.tempsig);
 		var N = [1,0,2,0,3,4,0,5,0,6,0,7][note % 12];
-		if(N>0 && IN.keySharp.indexOf(N)!=-1) sig++;
-		if(N>0 && IN.keyFlat.indexOf(N)!=-1) sig--;
-		if(N>0 && IN.strSharp.indexOf(N)!=-1) sig++;
-		if(N>0 && IN.strFlat.indexOf(N)!=-1) sig--;
+		var sig = IN.keysig + ((IN.inverseTempsig)?-IN.tempsig:IN.tempsig);
+		if(!IN.naturize && IN.strNature.indexOf(N)==-1){
+			if(N>0 && IN.keySharp.indexOf(N)!=-1) sig++;
+			if(N>0 && IN.keyFlat.indexOf(N)!=-1) sig--;
+			if(N>0 && IN.strSharp.indexOf(N)!=-1) sig++;
+			if(N>0 && IN.strFlat.indexOf(N)!=-1) sig--;
+		}
 		note += sig;
 		//if(IN.onNote[note])MIDI.noteOff(IN.channel,note,releaseSpeed);
 		if(!mute) PLAYER.play(IN.channel, note, force, null, d);
@@ -1882,6 +1885,28 @@ addEvent = {
 						IN.inverseTempsig = !IN.inverseTempsig;
 						panel.refresh();
 					break;
+					case 82://R
+						recorder.recordQuantify();
+					break;
+					case 69://E
+						speedTrack.toggle();
+					break;
+					case 85://U
+						sustainTrack.toggle();
+					break;
+					case 70://F
+						IN.keysig -= 6;
+						panel.refresh();
+						view.draw();
+					break;
+					case 71://G
+						IN.keysig += 6;
+						panel.refresh();
+						view.draw();
+					break;
+					case 76://L
+						volumeTrack.toggle();
+					break;
 					default:
 						note = {37: 1, 38: 4, 39: 3, 40: 2}[ev.keyCode];
 						//Ctrl + 方向键细分网格
@@ -1898,6 +1923,18 @@ addEvent = {
 							note = null;
 						}
 				}
+				if(ev.keyCode >= 48 && ev.keyCode <= 55 || ev.keyCode == 81){// ctrl + [0-7]
+					IN.keysig = 0; IN.keyFlat = ""; IN.keySharp = "";
+					if(ev.keyCode <= 55){
+						if(IN.on[192]){//// ctrl + ~` + [0-7]
+							IN.keyFlat = "736251".slice(0,ev.keyCode-48);
+						}else{
+							IN.keySharp = "4152637".slice(0,ev.keyCode-48);
+						}
+					}
+					panel.refresh();
+					view.draw();
+				}
 			}else if (select.selectedArr.length){// modify mode
 				switch(ev.keyCode){
 					case 8: case 46: //del, backspace
@@ -1911,7 +1948,7 @@ addEvent = {
 					break;
 				}
 				note = null;
-			}else if(IN.on[18] && ev.keyCode == 82){// alt + R
+			/*}else if(IN.on[18] && ev.keyCode == 82){// alt + R
 				recorder.recordQuantify();
 			}else if(IN.on[18] && ev.keyCode == 84){// alt + T
 				speedTrack.toggle();
@@ -1926,7 +1963,7 @@ addEvent = {
 			}else if(IN.on[18] && ev.keyCode == 69){// alt + E
 				IN.keysig += 6;
 				panel.refresh();
-				view.draw();
+				view.draw();*/
 			}else if(IN.on[16] && ev.keyCode == 192){// shift + ~
 				IN.keysig++;
 				panel.refresh();
@@ -1935,17 +1972,8 @@ addEvent = {
 				IN.keysig--;
 				panel.refresh();
 				view.draw();
-			}else if(IN.on[18] && ev.keyCode >= 48 && ev.keyCode <= 100){// alt + [0-7]
-				IN.keysig = 0; IN.keyFlat = ""; IN.keySharp = "";
-				if(ev.keyCode <= 55){
-					if(IN.on[192]){//// alt + ~` + [0-7]
-						IN.keyFlat = "736251".slice(0,ev.keyCode-48);
-					}else{
-						IN.keySharp = "4152637".slice(0,ev.keyCode-48);
-					}
-				}
-				panel.refresh();
-				view.draw();
+				IN.keepfirsttemp = false;
+			
 			}else if(ev.kipon){
 				if(ev.keyCode>=A0) note = ev.keyCode;//kipon
 			}else if(IN.mode == "eop"){
@@ -1956,7 +1984,10 @@ addEvent = {
 					{37: "1", 38: "4", 39: "6", 40: "5", 191: (grid.enable)?null:"2"}; // hold key "~" o shift(code:192)
 				note = temparr[ev.keyCode];
 				if(note){//如果有方向键临时升降，写入strFlat/strSharp
-					if(tempSign) {
+					if(IN.on[18]){
+						IN.strNature += note;
+						IN.keepfirsttemp = false;
+					}else if(tempSign) {
 						IN.strFlat += note;
 					}else{
 						IN.strSharp += note;
@@ -1968,7 +1999,9 @@ addEvent = {
 					if(ev.keyCode == 16){ //shift 
 						IN.strSharp = "";
 						IN.strFlat = "";
+						IN.strNature = "";
 						IN.keepfirsttemp = false;
+						IN.naturize = false;
 						if(!(IN.on[32]||IN.on[192]))IN.tempsig = 0;
 						//remove effect of space tempdig
 					}else if(ev.keyCode == 32) {
@@ -1977,7 +2010,10 @@ addEvent = {
 					}else if(ev.keyCode == 192) {
 						IN.tempsig = -1;
 						IN.keepfirsttemp = true;
-					};
+					}else if(ev.keyCode == 18){
+						IN.naturize = true;
+						//IN.keepfirsttemp = true;
+					}
 					panel.refresh();
 					view.draw();
 				}
@@ -2009,6 +2045,7 @@ addEvent = {
 				}
 				IN.keepfirsttemp = false;
 				if(!(IN.on[32]||IN.on[192]))IN.tempsig = 0;
+				//if(!IN.on[18]) IN.naturize = false;
 				//remove effect of space tempdig
 				if(grid.enable && !recorder.isQuantify){
 					grid.IN(note);
@@ -2045,7 +2082,12 @@ addEvent = {
 		}
 		IN.onkeyup = function( ev ) {
 			var key = String.fromCharCode(ev.keyCode);
-			if(ev.keyCode == 32 || ev.keyCode == 192 ){
+			if(ev.keyCode == 18){
+				/*if(!IN.keepfirsttemp){
+					IN.naturize = false;
+					panel.refresh();	
+				}*/
+			}else if(ev.keyCode == 32 || ev.keyCode == 192 ){
 				if(!IN.keepfirsttemp){
 					IN.tempsig = 0;
 				}
@@ -2174,6 +2216,7 @@ panel = {
 		{name:LAN.pedal, className:"blue", action: function(){
 			IN.pedalInput = !IN.pedalInput;
 			$(LAN.pedal).className = IN.pedalInput?"blueOn":"blue";
+			screenKeyboard.draw();
 		}},
 		{name:LAN.ioorpon, className:"blue", action: function(){
 			if($("ioorpon").style.display == "block"){
@@ -2191,6 +2234,7 @@ panel = {
 		}},
 		{name:"Keysig", className:"dis", action: "disabled"},
 		{name:"strSharp", className:"dis", action: "disabled"},
+		{name:"strNature", className:"dis", action: "disabled"},
 		{name:"strFlat", className:"dis", action: "disabled"},
 		{name:"keyTemp", className:"keytemp", action: "disabled"},
 		{name:"EOP", className:"white", action: function (){
@@ -2356,6 +2400,7 @@ panel = {
 		
 		$("strSharp").innerHTML = (IN.inverseTempsig?"":"<b>")+"<i>#</i>"+IN.strSharp+(IN.inverseTempsig?"":"</b>");
 		$("strFlat").innerHTML = (!IN.inverseTempsig?"":"<b>")+"<i>b</i>"+IN.strFlat+(!IN.inverseTempsig?"":"</b>");
+		$("strNature").innerHTML = (IN.naturize?"<b>":"")+"&#9838;"+(IN.naturize?"</b>":"")+IN.strNature;
 		$("keyTemp").innerHTML = IN.keySharp.length?("<i>#</i>"+IN.keySharp):(IN.keyFlat.length?("<i>b</i>"+IN.keyFlat):"&#9838;");
 		//$(LAN.sus).className = (MIDI.channels[IN.channel].sustain)?"greenOn":"green";
 	},

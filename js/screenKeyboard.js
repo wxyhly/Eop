@@ -46,19 +46,20 @@ var screenKeyboard = {
                 var note = null;
                 var fnkey = key==20?"Pedal":null;
                 if(IN.on[17]){
-                    fnkey = {192:"SigInv",65:"All",68:"Resel",90:"Undo",89:"Redo",88:"Cut",67:"Copy",86:"Paste",79:"Open",83:"Save",37:"1/1",38:"1/4",40:"1/2",39:"1/3",77:"Track",219:"|←",221:"|→"}[key];
-                }else if(IN.on[18]&&!select.selectedArr.length){
-                    fnkey = {81:"♮",69:"Sig++",68:"Sig--",192:"Sig-",49:"#",50:"##",51:"###",52:"####",53:"#5",54:"#6",55:"#7",84:"Speed",83:"Sustn"}[key];
+                    fnkey = {192:"SigInv",65:"All",68:"Resel",90:"Undo",89:"Redo",88:"Cut",67:"Copy",86:"Paste",79:"Open",83:"Save",37:"1/1",38:"1/4",40:"1/2",39:"1/3",77:"Track",219:"|←",221:"|→",81:"♮",70:"Sig++",71:"Sig--",49:"#",50:"##",51:"###",52:"####",53:"#5",54:"#6",55:"#7",69:"Speed",85:"Sustn",76:"Volum"}[key];
                     if(IN.on[192]) fnkey = fnkey || {49:"b",50:"bb",51:"bbb",52:"bbbb",53:"b5",54:"b6",55:"b7"}[key];
                 }else if(IN.mode=="eop"){
                     if(!select.selectedArr.length){
-                        if(IN.on[16]){
+                        if(IN.on[18]){
+                            fnkey = {192:"Sig-"}[key];
+                        }else if(IN.on[16]){
                             fnkey = {192:"Sig+"}[key];
                             fnkey = fnkey||((!IN.inverseTempsig)?{16:"♮",32:"b",192:"#",37:"b2",38:"b3",40:"b6",39:"b7",191:"b5"}:{16:"♮",32:"#",192:"b",37:"#1",38:"#4",40:"#5",39:"#6",191:"#2"})[key];
                         }
                         fnkey = fnkey||((IN.inverseTempsig^IN.on[192])?{190:"Pedal",16:"♮",32:"b",192:"#",37:"b2",38:"b3",40:"b6",39:"b7",191:"b5"}:{190:"Pedal",16:"♮",32:"#",192:"b",37:"#1",38:"#4",40:"#5",39:"#6",191:"#2"})[key];
-                        if(IN.Eop[key]){
-                            note = IN.Eop[key];
+                        if(key == 190 && IN.pedalInput) fnkey = "";
+                        note = (key==190 && !IN.pedalInput) ? null : IN.Eop[key];
+                        if(note){
                             note = IN.ki(note,0,true);
                             var key = ((view.list == view.flatlist)?MIDI.noteToKeyF:MIDI.noteToKeyS)[note];
                             if(key){
