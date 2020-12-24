@@ -46,7 +46,7 @@ var screenKeyboard = {
                 var note = null;
                 var fnkey = key==20?"Pedal":null;
                 if(IN.on[17]){
-                    fnkey = {192:"SigInv",65:"All",68:"Resel",90:"Undo",89:"Redo",88:"Cut",67:"Copy",86:"Paste",79:"Open",83:"Save",37:"1/1",38:"1/4",40:"1/2",39:"1/3",77:"Track",219:"|←",221:"|→",81:"♮",70:"Sig++",71:"Sig--",49:"#",50:"##",51:"###",52:"####",53:"#5",54:"#6",55:"#7",69:"Speed",85:"Sustn",76:"Volum"}[key];
+                    fnkey = {192:"SigInv",65:"All",68:"Resel",90:"Undo",89:"Redo",88:"Cut",67:"Copy",86:"Paste",79:"Open",83:"Save",37:"1/1",38:"1/4",40:"1/2",39:"1/3",77:"Track",219:"|←",221:"|→",81:"♮",70:"Sig++",71:"Sig--",49:"#",50:"##",51:"###",52:"####",53:"#5",54:"#6",55:"#7",69:"Speed",85:"Sustn",76:"Volum",57:"Keys+",48:"Keys-"}[key];
                     if(IN.on[192]) fnkey = fnkey || {49:"b",50:"bb",51:"bbb",52:"bbbb",53:"b5",54:"b6",55:"b7"}[key];
                 }else if(IN.mode=="eop"){
                     if(!select.selectedArr.length){
@@ -263,12 +263,16 @@ var screenKeyboard = {
 };
 var kipon = {
     draw: function(init){
+        if(init){//一定要重置是因为可以改宽度，此时重新init
+            kipon.xbwRange = [];
+            kipon.xwRange = [];
+        }
         if($("kiboard").style.display=="none") return 0;
         var ki = $("kiboard");
         var ctxt = ctxt$("kiboard");
         ctxt.clearRect(0,0,2000,2000);
-        var w = ki.width, h = ki.height-kipon.ioorSize*0.4, s = kipon.ioorSize;
-        ctxt.font = (s*0.3)+"px Georgia";
+        var w = ki.width, h = ki.height-80*0.4, s = kipon.ioorSize;
+        ctxt.font = Math.max(s*0.3,20)+"px Georgia";
         ctxt.strokeStyle = "#000";
         var y = kipon.margin;
         var dh = h/kipon.rows;
@@ -278,15 +282,13 @@ var kipon = {
             for(var n = A0; n<= C8; n++){
                 var black = [0,3,0,0,1,0,3,0,0,1,0,2][(n-A0)%12];
                 //0: hqer, 1-3: hqo: 1 ane 2 cne 3 dne offset
-                if(black){
-                    var xp = x+s*(-0.54+black*(2*0.56-1));
-                    if(x>-100&&x<w+200) ctxt.fillRect(xp,y,s*0.58,dh*kipon.bw_lengthRatio);//0.58:7/12
-                    if(init&&!r){
-                        kipon.xbwRange.push((xp-kipon.xpos[r])/s-kipon.hitDelta);
-                        kipon.xbwRange.push((xp-kipon.xpos[r])/s+0.58+kipon.hitDelta);
-                    }
-                }else{
+                if(!black){
                     if(x>-100&&x<w+200){
+                        if(kipon.on[r][n]){
+                            ctxt.fillStyle = "#5F1";
+                            ctxt.fillRect(x+1,y+1,s-1,dh-1);
+                            ctxt.fillStyle = "#000";
+                        }
                         ctxt.strokeRect(x,y,s,dh);
                         ctxt.fillText(MIDI.noteToKeyS[n],x+s*0.4,y+dh*4/5);
                     }
@@ -297,9 +299,32 @@ var kipon = {
                         kipon.xwRange.push((x-kipon.xpos[r])/s);
                     }
                     x += s;
+                }else{
+                    var xp = x+s*(-0.54+black*(2*0.56-1));
+                    if(init&&!r){
+                        kipon.xbwRange.push((xp-kipon.xpos[r])/s-kipon.hitDelta);
+                        kipon.xbwRange.push((xp-kipon.xpos[r])/s+0.58+kipon.hitDelta);
+                    }
                 }
-                
             }
+            x = kipon.xpos[r];
+            for(var n = A0; n<= C8; n++){
+                var black = [0,3,0,0,1,0,3,0,0,1,0,2][(n-A0)%12];
+                if(black){
+                    var xp = x+s*(-0.54+black*(2*0.56-1));
+                    if(x>-100&&x<w+200) {
+                        ctxt.fillRect(xp,y,s*0.58,dh*kipon.bw_lengthRatio);//0.58:7/12
+                        if(kipon.on[r][n]){
+                            ctxt.fillStyle = "#2A0";
+                            ctxt.fillRect(xp+1,y+1,s*0.58-1,dh*kipon.bw_lengthRatio-1);
+                            ctxt.fillStyle = "#000";
+                        }
+                    }
+                }else{
+                    x += s;
+                }
+            }
+
             ctxt.fillStyle = "#AAA";
             ctxt.fillRect(0,y,s*kipon.sideSize,dh);
             ctxt.fillRect(w-s*kipon.sideSize,y,s*kipon.sideSize,dh);
@@ -318,16 +343,36 @@ var kipon = {
     xwRange: [],//an initial hitTest xRange for w area
     bw_lengthRatio: 0.58,
     xpos: [-700,-350,0,-350,-350,-350,-350,-350],
-    channels: [0,0,0],
+    channels: [0,0,0],//给row查ch
+    rowChannel: {},//给ch查row
     rows: 1,
     margin: 4,
     gap: 2/40,
+    on: [{}],
     resize: function(w,h){
         w -= 60;
         var ioor = $("kiboard");
         ioor.width = w;
-        ioor.height = h - 80;
+        ioor.height = Math.min(h-80,200+kipon.rows*200);
         kipon.draw();
+    },
+    keyDown: function(c,n){//channel, note, duration
+        c = kipon.rowChannel[c];//c -> row num.
+        if(!kipon.on[c])return 0;
+        kipon.on[c][n] = true;
+        //if(duration>0)setTimeout(kipon.keyUp.bind(null,c,n),duration);
+        //if(duration===0)setTimeout(kipon.keyUp.bind(null,c,n),200);
+        if($('kiboard').style.display=="block"){
+            kipon.draw();
+        }
+    },
+    keyUp: function(c,n){//channel, note
+        c = kipon.rowChannel[c];//c -> row num.
+        if(!kipon.on[c])return 0;
+        kipon.on[c][n] = false;
+        if($('kiboard').style.display=="block"){
+            kipon.draw();
+        }
     },
     currentDown: {0:null},
     hitTest: function(e,index){

@@ -253,10 +253,12 @@ PLAYER = {
 			MIDI.noteOn(channel, note, volume);
 			delay = 0;
 			MIDI.channels[channel].onNote[note] = true;
+			kipon.keyDown(channel, note);
 		}else{
 			new setTimeoutMgr(function (){
 				MIDI.noteOn(channel, note, volume);
 				MIDI.channels[channel].onNote[note] = true;
+				kipon.keyDown(channel, note);
 				if(cb){cb()}
 			},delay);
 		}
@@ -266,9 +268,13 @@ PLAYER = {
 				function (){
 					MIDI.noteOff(channel, note);
 					MIDI.channels[channel].onNote[note] = false;
+					kipon.keyUp(channel, note);
 				},
 				duration + delay
 			);
+		}
+		if(duration == 0){
+			new setTimeoutMgr(kipon.keyUp(channel, note),delay+200);
 		}
 	}
 };
@@ -473,6 +479,12 @@ recorder = {
 			clearTimeout(i);
 		}*/
 		setTimeoutMgr.clearAll();
+		for(var r in kipon.on){
+			kipon.on[r] = {};
+		}
+		if($("kiboard").style.display == "block"){
+			kipon.draw();
+		}
 		for(var c = 0; c < MIDI.channels.length; c++){
 			for(var i = A0; i <= C8; i++){
 				MIDI.stop(c,i);
@@ -1907,6 +1919,18 @@ addEvent = {
 					case 76://L
 						volumeTrack.toggle();
 					break;
+					case 48://0
+						if($("kiboard").style.display=="block" && kipon.ioorSize<130){
+							kipon.ioorSize += 5;
+							kipon.draw(true);
+						}
+					break;
+					case 57://9
+						if($("kiboard").style.display=="block" && kipon.ioorSize>40){
+							kipon.ioorSize -= 5;
+							kipon.draw(true);
+						}
+					break;
 					default:
 						note = {37: 1, 38: 4, 39: 3, 40: 2}[ev.keyCode];
 						//Ctrl + 方向键细分网格
@@ -1974,7 +1998,7 @@ addEvent = {
 				view.draw();
 				IN.keepfirsttemp = false;
 			
-			}else if(ev.kipon){
+			}else if(ev.kipon){//当ev是手动从鼠标点击屏幕键盘模拟的，kipon为true
 				if(ev.keyCode>=A0) note = ev.keyCode;//kipon
 			}else if(IN.mode == "eop"){
 				//方向键临时升降调：
@@ -2030,7 +2054,7 @@ addEvent = {
 				panel.refresh();
 				view.draw();
 			}
-			var channel = ev.kipon? ev.channel : IN.channel;
+			var channel = ev.kipon? ev.channel : IN.channel;//当ev是手动从鼠标点击屏幕键盘模拟的，kipon为true
 			if(note) {
 				var F = null;
 				//$("progress").innerHTML = ev.force;
@@ -2101,6 +2125,7 @@ addEvent = {
 				if(!MIDI.channels[channel].sustain){
 					MIDI.noteOff(channel,n.n);
 				}
+				kipon.keyUp(channel,n.n);//屏幕键盘与真键同步，无视sustain
 				if(!(recorder.isQuantify && !(recorder.isRecord === false) && grid.enable)){
 					n.d = new Date().getTime() - n.t - recorder.offset;
 					new Command(
@@ -2139,16 +2164,16 @@ addEvent = {
 
 langue = {
 	di: function(){
-		this.play = "ZEU";
+		this.play = "JRE";
 		this.stop = "RET";
 		this.save = "ANJ";
 		this.edit = "CHH";
 		this.open = "JA";
 		this.close = "JE";
-		this.midi = "EQETO";
+		this.midi = "EQET";
 		this.scale = "Scale";
-		this.grid = "GRD";
-		this.speed = "FF";
+		this.grid = "NEU";
+		this.speed = "FUA";
 		this.sus = "SUS";
 		this.channel = "Channel";
 		this.record = "RIE";
@@ -2422,7 +2447,9 @@ panel = {
 			var l = MIDI.channels[i].lock ? " checked" : "";
 			var INC = IN.channel == i ? " checked" : "";
 			if(!MIDI.channels[i].lock){
-				kipon.channels[kipon.rows] = i;
+				kipon.channels[kipon.rows] = i;//给row查ch
+				kipon.rowChannel[i] = kipon.rows;//给ch查row
+				kipon.on[kipon.rows] = {};
 				kipon.rows++;
 			}
 			channelHTML += `
@@ -2434,7 +2461,8 @@ panel = {
 				<br>
 			`;
 		}
-		if(!kipon.rows){kipon.rows = 1;kipon.channels[0] = 0;}
+		if(!kipon.rows){kipon.rows = 1;kipon.channels[0] = 0;kipon.rowChannel[0] = 0;}
+		$("kiboard").height = Math.min(window.innerHeight-80,200+kipon.rows*200);
 		channelHTML += `<hr><input type="button" onclick="panel.addSoundFont(SoundfontConfigs[$('sfadd').value])" value="Add" ><select id="sfadd">` + panel.writeSelectSF();
 		channelHTML += '<br><span id="ChannelProgress"></span>';
 		$("channel").innerHTML = channelHTML;

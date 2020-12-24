@@ -104,7 +104,7 @@ canvas.ioorpon {
 	left: 10%;
 	bottom: 40px;
 	z-index:100;
-	background-color: #999;
+	background-color: rgba(153,153,153,0.7);
 	opacity: 0.6;
 	display: none;
 }
@@ -113,7 +113,7 @@ canvas.kiboard {
 	left: 10px;
 	top: 80px;
 	z-index:99;
-	background-color: #FFF;
+	background-color: rgba(255,255,255,0.7);
 	opacity: 0.6;
 	display: none;
 }
