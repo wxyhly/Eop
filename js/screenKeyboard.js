@@ -46,7 +46,7 @@ var screenKeyboard = {
                 var note = null;
                 var fnkey = key==20?"Pedal":null;
                 if(IN.on[17]){
-                    fnkey = {192:"SigInv",65:"All",68:"Resel",90:"Undo",89:"Redo",88:"Cut",67:"Copy",86:"Paste",79:"Open",83:"Save",37:"1/1",38:"1/4",40:"1/2",39:"1/3",77:"Track",219:"|←",221:"|→",81:"♮",70:"Sig++",71:"Sig--",49:"#",50:"##",51:"###",52:"####",53:"#5",54:"#6",55:"#7",69:"Speed",85:"Sustn",76:"Volum",57:"Keys+",48:"Keys-"}[key];
+                    fnkey = {192:"SigInv",65:"All",68:"Resel",90:"Undo",89:"Redo",88:"Cut",67:"Copy",86:"Paste",79:"Open",83:"Save",37:"1/1",38:"1/4",40:"1/2",39:"1/3",77:"Track",219:"|←",221:"|→",81:"♮",70:"Sig++",71:"Sig--",49:"#",50:"##",51:"###",52:"####",53:"#5",54:"#6",55:"#7",69:"Speed",85:"Sustn",76:"Volum",57:"Keys+",48:"Keys-",82:"Rcrd"}[key];
                     if(IN.on[192]) fnkey = fnkey || {49:"b",50:"bb",51:"bbb",52:"bbbb",53:"b5",54:"b6",55:"b7"}[key];
                 }else if(IN.mode=="eop"){
                     if(!select.selectedArr.length){

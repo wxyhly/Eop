@@ -122,9 +122,13 @@ MIDI = {
 		var source = context.createBufferSource();
 		source.buffer = buf;
 		if(tB[note] && MIDI.channels[channel].soundfontConfig.settings.releaseSound != note){//若这个音符本来正在播放，切断它
+			var dbOn = tB[note].doubleOn;//是否多个键按下这一个音
 			MIDI.noteOff(channel, note, true);//true:忽略sustain强制关断
+			tB[note] = source;
+			source.doubleOn = dbOn?dbOn+1:1;//统计键数
+		}else{
+			tB[note] = source;
 		}
-		tB[note] = source;
 		var gainNode = context.createGain();
 		source.gainNode = gainNode;
 		source.connect(gainNode);
@@ -133,8 +137,8 @@ MIDI = {
 		source.playbackRate.value = pb[1];
 		source.start(0);
 		//console.log("on:"+channel+"-"+note);
-		
-		return MIDI.trackBuffers[channel][note][0];
+
+		//return MIDI.trackBuffers[channel][note][0]; 好像没人用返回值，先注释了
 	},
 	noteOff : function(channel, note, hard) {//hard: 忽略sustain强制关断
 		
@@ -144,6 +148,12 @@ MIDI = {
 		if(!pb) return 0;
 		var tB = MIDI.trackBuffers[channel];
 		var bufferSource = tB[note];
+		if(!hard){
+			if(bufferSource.doubleOn){
+				bufferSource.doubleOn--;//是否多个键按下这一个音
+				if(bufferSource.doubleOn) return 0;
+			}
+		}
 		var releaseSpeed = MIDI.channels[channel].soundfontConfig.settings.releaseSpeed;
 		//console.log("off:"+channel+"-"+note);
 	
@@ -1685,6 +1695,7 @@ addEvent = {
 					view.oldPy = Pos.y;
 					view.oldP = Pos.x/view.k+view.min;
 					view.ismove = true;
+					IN.naturize = false;
 				}else{
 					view.setP(Pos.x/view.k+view.min);
 					if(grid.enable) view.setP(grid.nearest(view.p));
@@ -1711,6 +1722,7 @@ addEvent = {
 				if(IN.on[16] || IN.on[18]){
 				//hold alt: scale duration || hold shift: edit velocity
 					view.oldP = Pos.x/view.k+view.min;
+					IN.naturize = false;
 					return 0;
 				}
 				select.rect = {};
@@ -1972,28 +1984,14 @@ addEvent = {
 					break;
 				}
 				note = null;
-			/*}else if(IN.on[18] && ev.keyCode == 82){// alt + R
-				recorder.recordQuantify();
-			}else if(IN.on[18] && ev.keyCode == 84){// alt + T
-				speedTrack.toggle();
-			}else if(IN.on[18] && ev.keyCode == 83){// alt + S
-				sustainTrack.toggle();
-			}else if(IN.on[18] && ev.keyCode == 68){// alt + W
-				IN.keysig -= 6;
-				panel.refresh();
-				view.draw();
-			}else if(IN.on[18] && ev.keyCode == 86){// alt + V
-				volumeTrack.toggle();
-			}else if(IN.on[18] && ev.keyCode == 69){// alt + E
-				IN.keysig += 6;
-				panel.refresh();
-				view.draw();*/
 			}else if(IN.on[16] && ev.keyCode == 192){// shift + ~
 				IN.keysig++;
+				IN.naturize = false;
 				panel.refresh();
 				view.draw();
 			}else if(IN.on[18] && ev.keyCode == 192){// alt + ~
 				IN.keysig--;
+				IN.naturize = false;
 				panel.refresh();
 				view.draw();
 				IN.keepfirsttemp = false;
