@@ -112,7 +112,7 @@ MIDI = {
 		}
 	},
 	noteOn : function(channel, note, volume) {
-		
+		// console.log("-----------on----------");
 		if(!MIDI.channels[channel].sound)return 0;//the channel is mute.
 		var loaded = MIDI.channels[channel].soundfontConfig.loaded;
 		var tB = MIDI.trackBuffers[channel];
@@ -128,6 +128,7 @@ MIDI = {
 			source.doubleOn = dbOn?dbOn+1:1;//统计键数
 		}else{
 			tB[note] = source;
+			source.doubleOn = 1;
 		}
 		var gainNode = context.createGain();
 		source.gainNode = gainNode;
@@ -141,7 +142,14 @@ MIDI = {
 		//return MIDI.trackBuffers[channel][note][0]; 好像没人用返回值，先注释了
 	},
 	noteOff : function(channel, note, hard) {//hard: 忽略sustain强制关断
-		
+		if(MIDI.channels[channel].sustain && !hard){
+			var tB = MIDI.trackBuffers[channel];
+			var bufferSource = tB[note];
+			if(bufferSource.doubleOn){
+				bufferSource.doubleOn--;
+			}
+			return 0;
+		}
 		if(MIDI.channels[channel].sustain && !hard) return 0;
 		if(MIDI.channels[channel].soundfontConfig.settings.sustain && MIDI.channels[channel].soundfontConfig.settings.sustain.indexOf(note)!=-1) return 0;
 		var pb = MIDI.trackBuffers[channel][note];
@@ -151,7 +159,9 @@ MIDI = {
 		if(!hard){
 			if(bufferSource.doubleOn){
 				bufferSource.doubleOn--;//是否多个键按下这一个音
-				if(bufferSource.doubleOn) return 0;
+				if(bufferSource.doubleOn) {
+					return 0;
+				}
 			}
 		}
 		var releaseSpeed = MIDI.channels[channel].soundfontConfig.settings.releaseSpeed;
@@ -322,12 +332,12 @@ IN = {
 		//just play a sound without writing on record ctxt
 		var N = [1,0,2,0,3,4,0,5,0,6,0,7][note % 12];
 		var sig = IN.keysig + ((IN.inverseTempsig)?-IN.tempsig:IN.tempsig);
-		if(!IN.naturize && IN.strNature.indexOf(N)==-1){
+		if(!IN.naturize || IN.strNature.indexOf(N)!=-1){
 			if(N>0 && IN.keySharp.indexOf(N)!=-1) sig++;
 			if(N>0 && IN.keyFlat.indexOf(N)!=-1) sig--;
-			if(N>0 && IN.strSharp.indexOf(N)!=-1) sig++;
-			if(N>0 && IN.strFlat.indexOf(N)!=-1) sig--;
 		}
+		if(N>0 && IN.strSharp.indexOf(N)!=-1) sig++;
+		if(N>0 && IN.strFlat.indexOf(N)!=-1) sig--;
 		note += sig;
 		//if(IN.onNote[note])MIDI.noteOff(IN.channel,note,releaseSpeed);
 		if(!mute) PLAYER.play(IN.channel, note, force, null, d);
@@ -2016,7 +2026,8 @@ addEvent = {
 						IN.keepfirsttemp = false;
 					}
 				}
-				note = (ev.keyCode==190 && !IN.pedalInput) ? null : IN.Eop[ev.keyCode]; //不开鼠标踏板时.>键(190)不发音，给踏板了
+				//note = (ev.keyCode==190 && !IN.pedalInput) ? null : IN.Eop[ev.keyCode]; //不开鼠标踏板时.>键(190)不发音，给踏板了
+				note = IN.Eop[ev.keyCode]; //不开鼠标踏板时.>键(190)还是发音好点
 				if(!note){
 					if(ev.keyCode == 16){ //shift 
 						IN.strSharp = "";
@@ -2120,9 +2131,9 @@ addEvent = {
 			var n = IN.pressnote[ev.keyCode];
 			if(n){
 				var channel = ev.kipon? ev.channel : IN.channel;
-				if(!MIDI.channels[channel].sustain){
+				//if(!MIDI.channels[channel].sustain){
 					MIDI.noteOff(channel,n.n);
-				}
+				//}
 				kipon.keyUp(channel,n.n);//屏幕键盘与真键同步，无视sustain
 				if(!(recorder.isQuantify && !(recorder.isRecord === false) && grid.enable)){
 					n.d = new Date().getTime() - n.t - recorder.offset;
